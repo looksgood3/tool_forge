@@ -11,6 +11,7 @@ import { useProfileStore } from '@/stores/profile'
 import { cn } from '@/lib/utils'
 
 const CATEGORY_ORDER: ToolCategory[] = [
+  'forensic',
   'data',
   'codec',
   'crypto',

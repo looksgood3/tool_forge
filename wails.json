@@ -1,7 +1,7 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "tool_forge",
-  "outputfilename": "tool_forge",
+  "outputfilename": "ToolForge",
   "info": {
     "productName": "Tool Forge",
     "productVersion": "0.1.0"

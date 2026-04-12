@@ -4,6 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import { toolRegistry } from '@/tools/registry'
 
 export type ToolCategory =
+  | 'forensic'
   | 'data'
   | 'codec'
   | 'crypto'
@@ -25,6 +26,7 @@ export interface ToolMeta {
 }
 
 export const CATEGORY_LABELS: Record<ToolCategory, string> = {
+  forensic: '取证',
   data: '数据处理',
   codec: '编解码',
   crypto: '加密哈希',

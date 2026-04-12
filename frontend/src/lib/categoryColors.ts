@@ -5,6 +5,7 @@ import type { ToolCategory } from '@/stores/tools'
  * Minimal 风格下调用方应回退到 bg-secondary text-foreground。
  */
 export const NEBULA_CATEGORY_COLORS: Record<ToolCategory, string> = {
+  forensic: 'bg-red-500/15 text-red-600 dark:bg-red-500/20 dark:text-red-300',
   data: 'bg-violet-500/15 text-violet-600 dark:bg-violet-500/20 dark:text-violet-300',
   codec: 'bg-sky-500/15 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300',
   crypto: 'bg-rose-500/15 text-rose-600 dark:bg-rose-500/20 dark:text-rose-300',

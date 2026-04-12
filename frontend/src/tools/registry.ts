@@ -1,6 +1,9 @@
 import type { ToolMeta } from '@/stores/tools'
 import type { ComponentType } from 'react'
 
+import MobileForensic from './mobile-forensic'
+import { meta as mobileForensicMeta } from './mobile-forensic/meta'
+
 import JsonEditor from './json-editor'
 import { meta as jsonEditorMeta } from './json-editor/meta'
 
@@ -58,6 +61,7 @@ export interface ToolEntry {
 }
 
 export const tools: ToolEntry[] = [
+  { meta: mobileForensicMeta, Component: MobileForensic },
   { meta: jsonEditorMeta, Component: JsonEditor },
   { meta: jsonToGoMeta, Component: JsonToGo },
   { meta: xmlEditorMeta, Component: XmlEditor },

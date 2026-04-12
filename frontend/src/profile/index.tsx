@@ -4,15 +4,25 @@ import {
   Database,
   Info,
   Palette,
+  Plug,
   SlidersHorizontal,
   User,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { AboutSection } from './sections/About'
 import { BasicSection } from './sections/Basic'
+import { ExternalSection } from './sections/External'
 import { PlaceholderSection } from './sections/Placeholder'
 
-type SectionId = 'basic' | 'ai' | 'usage' | 'preferences' | 'data' | 'about'
+type SectionId =
+  | 'basic'
+  | 'external'
+  | 'ai'
+  | 'usage'
+  | 'preferences'
+  | 'data'
+  | 'about'
 
 interface Section {
   id: SectionId
@@ -23,11 +33,12 @@ interface Section {
 
 const SECTIONS: Section[] = [
   { id: 'basic', label: '基础信息', icon: User },
+  { id: 'external', label: '外部工具', icon: Plug },
   { id: 'ai', label: 'AI 配置', icon: Bot, comingSoon: true },
   { id: 'usage', label: 'AI 用量', icon: SlidersHorizontal, comingSoon: true },
   { id: 'preferences', label: '工具偏好', icon: Palette, comingSoon: true },
   { id: 'data', label: '数据', icon: Database, comingSoon: true },
-  { id: 'about', label: '关于', icon: Info, comingSoon: true },
+  { id: 'about', label: '关于', icon: Info },
 ]
 
 export function Profile() {
@@ -69,6 +80,10 @@ export function Profile() {
       <div className="flex-1 overflow-auto p-6">
         {active === 'basic' ? (
           <BasicSection />
+        ) : active === 'external' ? (
+          <ExternalSection />
+        ) : active === 'about' ? (
+          <AboutSection />
         ) : (
           <PlaceholderSection title={section.label} />
         )}
