@@ -11,7 +11,7 @@
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "xiaoxu123195",
-    "email": "2057099774@qq.com"
+    "name": "Tool Forge",
+    "email": "cherrytump@gmail.com"
   }
 }
