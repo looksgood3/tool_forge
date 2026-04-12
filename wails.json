@@ -1,0 +1,17 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "tool_forge",
+  "outputfilename": "tool_forge",
+  "info": {
+    "productName": "Tool Forge",
+    "productVersion": "0.1.0"
+  },
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "xiaoxu123195",
+    "email": "2057099774@qq.com"
+  }
+}
