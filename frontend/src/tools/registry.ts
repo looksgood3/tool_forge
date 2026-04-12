@@ -1,6 +1,15 @@
 import type { ToolMeta } from '@/stores/tools'
 import type { ComponentType } from 'react'
 
+import JsonEditor from './json-editor'
+import { meta as jsonEditorMeta } from './json-editor/meta'
+
+import JsonToGo from './json-to-go'
+import { meta as jsonToGoMeta } from './json-to-go/meta'
+
+import XmlEditor from './xml-editor'
+import { meta as xmlEditorMeta } from './xml-editor/meta'
+
 import Base64Text from './base64-text'
 import { meta as base64TextMeta } from './base64-text/meta'
 
@@ -34,11 +43,11 @@ import { meta as hashMeta } from './hash/meta'
 import QrCodeTool from './qrcode'
 import { meta as qrcodeMeta } from './qrcode/meta'
 
-import JsonToGo from './json-to-go'
-import { meta as jsonToGoMeta } from './json-to-go/meta'
-
 import CurlConvert from './curl-convert'
 import { meta as curlConvertMeta } from './curl-convert/meta'
+
+import TextDiff from './text-diff'
+import { meta as textDiffMeta } from './text-diff/meta'
 
 export interface ToolEntry {
   meta: ToolMeta
@@ -46,7 +55,9 @@ export interface ToolEntry {
 }
 
 export const tools: ToolEntry[] = [
+  { meta: jsonEditorMeta, Component: JsonEditor },
   { meta: jsonToGoMeta, Component: JsonToGo },
+  { meta: xmlEditorMeta, Component: XmlEditor },
   { meta: base64TextMeta, Component: Base64Text },
   { meta: base64ImageMeta, Component: Base64Image },
   { meta: urlCodecMeta, Component: UrlCodec },
@@ -59,6 +70,7 @@ export const tools: ToolEntry[] = [
   { meta: hashMeta, Component: Hash },
   { meta: qrcodeMeta, Component: QrCodeTool },
   { meta: curlConvertMeta, Component: CurlConvert },
+  { meta: textDiffMeta, Component: TextDiff },
 ]
 
 export const toolRegistry: ToolMeta[] = tools.map((t) => t.meta)
