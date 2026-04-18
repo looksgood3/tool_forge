@@ -34,7 +34,7 @@ func Check(ctx context.Context, currentVersion string) (*CheckResult, error) {
 			CurrentVersion: currentVersion,
 			LatestVersion:  currentVersion,
 			HasUpdate:      false,
-			CheckedAt:      time.Now().UTC(),
+			CheckedAt:      time.Now().UTC().Format(time.RFC3339),
 		}, nil
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -52,7 +52,7 @@ func Check(ctx context.Context, currentVersion string) (*CheckResult, error) {
 		CurrentVersion: currentVersion,
 		LatestVersion:  m.Version,
 		HasUpdate:      has,
-		CheckedAt:      time.Now().UTC(),
+		CheckedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
 	if has {
 		mc := m

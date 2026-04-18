@@ -1,8 +1,6 @@
 // Package updater 负责 Tool Forge 的更新检查、下载、自搬家。
 package updater
 
-import "time"
-
 // ManifestURL 指向 Hub 上托管的 Tool Forge manifest
 const ManifestURL = "https://hub.jntml.me/api/public/apps/tool-forge/manifest.json"
 
@@ -10,16 +8,19 @@ const ManifestURL = "https://hub.jntml.me/api/public/apps/tool-forge/manifest.js
 const DownloadPrefix = "ToolForge-v"
 
 // Manifest 与 Hub 侧 public.ManifestBody 对齐
+//
+// 时间字段统一用 RFC3339 字符串传递，跨 API 边界不走 time.Time——
+// 既避开 wails TS 绑定生成器对 time.Time 的不识别，又让 Go/TS 两侧类型身份一致。
 type Manifest struct {
-	Slug        string    `json:"slug"`
-	Version     string    `json:"version"`
-	Channel     string    `json:"channel"`
-	ReleasedAt  time.Time `json:"released_at"`
-	DownloadURL string    `json:"download_url"`
-	SHA256      string    `json:"sha256"`
-	SizeBytes   int64     `json:"size_bytes"`
-	Changelog   string    `json:"changelog"`
-	IsCritical  bool      `json:"is_critical"`
+	Slug        string `json:"slug"`
+	Version     string `json:"version"`
+	Channel     string `json:"channel"`
+	ReleasedAt  string `json:"released_at"`
+	DownloadURL string `json:"download_url"`
+	SHA256      string `json:"sha256"`
+	SizeBytes   int64  `json:"size_bytes"`
+	Changelog   string `json:"changelog"`
+	IsCritical  bool   `json:"is_critical"`
 }
 
 // CheckResult 返回给前端用于 UI 渲染
@@ -28,7 +29,7 @@ type CheckResult struct {
 	LatestVersion  string    `json:"latest_version"`
 	HasUpdate      bool      `json:"has_update"`
 	Manifest       *Manifest `json:"manifest,omitempty"`
-	CheckedAt      time.Time `json:"checked_at"`
+	CheckedAt      string    `json:"checked_at"`
 }
 
 // DownloadResult 下载完成后的结果
