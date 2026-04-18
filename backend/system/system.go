@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"runtime"
 
+	"github.com/zalando/go-keyring"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
-	
 )
 
 const keyringService = "tool-forge"

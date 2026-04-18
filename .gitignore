@@ -10,6 +10,10 @@ dist/
 *.app
 *.dmg
 
+# Wails 自动生成的前端绑定（每次 wails build/dev 都会重新生成）
+frontend/wailsjs/
+frontend/package.json.md5
+
 # Go
 *.out
 *.test

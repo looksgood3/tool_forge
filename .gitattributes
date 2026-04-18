@@ -1,0 +1,30 @@
+# 默认: 文本文件统一用 LF 存储，避免跨平台(Windows/macOS/Linux) CRLF 混乱
+* text=auto eol=lf
+
+# Windows 专属脚本必须保持 CRLF，否则 cmd/powershell 解析会出问题
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# 二进制文件显式标记，防止被当成文本做换行符转换
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.icns  binary
+*.webp  binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.7z    binary
+*.exe   binary
+*.dll   binary
+*.so    binary
+*.dylib binary
+*.wasm  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.eot   binary
