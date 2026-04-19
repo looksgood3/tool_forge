@@ -12,6 +12,7 @@ import (
 
 	"tool_forge/backend/system"
 	"tool_forge/backend/tools/charles"
+	"tool_forge/backend/tools/envscan"
 	"tool_forge/backend/tools/forensic"
 	"tool_forge/backend/updater"
 )
@@ -122,6 +123,13 @@ func (a *App) GetPassword(key string) (string, error) {
 // DeletePassword 从系统凭据库删除密码
 func (a *App) DeletePassword(key string) error {
 	return system.DeletePassword(key)
+}
+
+// ================ EnvScan ================
+
+// ScanEnvironments 扫描本机开发者工具；未安装的条目不返回。
+func (a *App) ScanEnvironments() envscan.ScanReport {
+	return envscan.Scan(a.ctx)
 }
 
 // ================ Updater ================

@@ -64,6 +64,9 @@ import { meta as hexEditorMeta } from './hex-editor/meta'
 import Mmkv from './mmkv'
 import { meta as mmkvMeta } from './mmkv/meta'
 
+import EnvScan from './env-scan'
+import { meta as envScanMeta } from './env-scan/meta'
+
 export interface ToolEntry {
   meta: ToolMeta
   Component: ComponentType
@@ -91,6 +94,7 @@ export const tools: ToolEntry[] = [
   { meta: charlesKeyMeta, Component: CharlesKey },
   { meta: hexEditorMeta, Component: HexEditor },
   { meta: mmkvMeta, Component: Mmkv },
+  { meta: envScanMeta, Component: EnvScan },
 ]
 
 export const toolRegistry: ToolMeta[] = tools.map((t) => t.meta)
