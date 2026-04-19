@@ -70,6 +70,9 @@ import { meta as envScanMeta } from './env-scan/meta'
 import ClaudeInsight from './claude-insight'
 import { meta as claudeInsightMeta } from './claude-insight/meta'
 
+import CodexInsight from './codex-insight'
+import { meta as codexInsightMeta } from './codex-insight/meta'
+
 export interface ToolEntry {
   meta: ToolMeta
   Component: ComponentType
@@ -99,6 +102,7 @@ export const tools: ToolEntry[] = [
   { meta: mmkvMeta, Component: Mmkv },
   { meta: envScanMeta, Component: EnvScan },
   { meta: claudeInsightMeta, Component: ClaudeInsight },
+  { meta: codexInsightMeta, Component: CodexInsight },
 ]
 
 export const toolRegistry: ToolMeta[] = tools.map((t) => t.meta)

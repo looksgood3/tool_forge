@@ -13,13 +13,14 @@ import (
 	"tool_forge/backend/system"
 	"tool_forge/backend/tools/charles"
 	"tool_forge/backend/tools/claudeinsight"
+	"tool_forge/backend/tools/codexinsight"
 	"tool_forge/backend/tools/envscan"
 	"tool_forge/backend/tools/forensic"
 	"tool_forge/backend/updater"
 )
 
 // AppVersion 应用版本号，随 wails.json 同步维护
-const AppVersion = "0.1.3"
+const AppVersion = "0.1.4"
 
 // AppInfo 应用元信息
 type AppInfo struct {
@@ -219,6 +220,99 @@ func (a *App) DeleteClaudeSkill(name string) error {
 // DeleteClaudeSkillFile 删除 skill 下某个文件或空目录。
 func (a *App) DeleteClaudeSkillFile(skill, relPath string) error {
 	return claudeinsight.DeleteSkillFile("", skill, relPath)
+}
+
+// ---- Claude 配置文件（settings.json / CLAUDE.md）----
+
+func (a *App) ReadClaudeConfigFile(name string) (*claudeinsight.ConfigFile, error) {
+	return claudeinsight.ReadConfigFile("", name)
+}
+
+func (a *App) WriteClaudeConfigFile(name, content string) error {
+	return claudeinsight.WriteConfigFile("", name, content)
+}
+
+// ================ Codex Insight ================
+
+// BuildCodexDashboard 扫描 ~/.codex/sessions 下的 JSONL，聚合 Dashboard 指标。
+func (a *App) BuildCodexDashboard(codexDir string) (*codexinsight.DashboardReport, error) {
+	return codexinsight.BuildDashboard(codexDir)
+}
+
+// ListCodexSessions 列出所有 Codex 会话（按结束时间倒序）。
+func (a *App) ListCodexSessions(codexDir string) (*codexinsight.SessionList, error) {
+	return codexinsight.ListSessions(codexDir)
+}
+
+// LoadCodexSession 读取单个会话的完整消息流。
+func (a *App) LoadCodexSession(filePath string) (*codexinsight.SessionDetail, error) {
+	return codexinsight.LoadSession(filePath)
+}
+
+// SearchCodexSessions 跨所有 Codex 会话全文搜索。
+func (a *App) SearchCodexSessions(query string) (*codexinsight.SearchResult, error) {
+	return codexinsight.SearchSessions("", query, 0)
+}
+
+// ---- Codex Bundle 导入导出 ----
+
+func (a *App) PickCodexExportPath(defaultFilename string) (string, error) {
+	return system.PickSaveFile(a.ctx, system.PickFileOptions{
+		Title:           "导出 Codex 会话到 ZIP",
+		Extensions:      []string{".zip"},
+		DisplayName:     "ZIP 压缩包",
+		DefaultFilename: defaultFilename,
+	})
+}
+
+func (a *App) PickCodexImportPath() (string, error) {
+	return system.PickFile(a.ctx, system.PickFileOptions{
+		Title:       "选择要导入的 Codex ZIP",
+		Extensions:  []string{".zip"},
+		DisplayName: "ZIP 压缩包",
+	})
+}
+
+func (a *App) ExportCodexSessions(filePaths []string, destZip string) (*codexinsight.ExportResult, error) {
+	return codexinsight.ExportSessions("", filePaths, destZip)
+}
+
+func (a *App) ImportCodexSessions(zipPath string) (*codexinsight.ImportResult, error) {
+	return codexinsight.ImportSessions("", zipPath)
+}
+
+// ---- Codex Memories ----
+
+func (a *App) ListCodexMemories() (*codexinsight.MemoryFileList, error) {
+	return codexinsight.ListMemories("")
+}
+
+func (a *App) ReadCodexMemory(relPath string) (*codexinsight.MemoryFileContent, error) {
+	return codexinsight.ReadMemory("", relPath)
+}
+
+func (a *App) WriteCodexMemory(relPath, content string) error {
+	return codexinsight.WriteMemory("", relPath, content)
+}
+
+func (a *App) DeleteCodexMemory(relPath string) error {
+	return codexinsight.DeleteMemory("", relPath)
+}
+
+// ---- Codex 配置文件(AGENTS.md / config.toml) ----
+
+func (a *App) ReadCodexConfigFile(name string) (*codexinsight.ConfigFile, error) {
+	return codexinsight.ReadConfigFile("", name)
+}
+
+func (a *App) WriteCodexConfigFile(name, content string) error {
+	return codexinsight.WriteConfigFile("", name, content)
+}
+
+// ---- Codex 全局历史 ----
+
+func (a *App) ListCodexHistory(query string) (*codexinsight.HistoryResult, error) {
+	return codexinsight.ListHistory("", query)
 }
 
 // ================ Updater ================
