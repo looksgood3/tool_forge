@@ -1,0 +1,136 @@
+package appsearch
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+)
+
+const defaultUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Tool-Forge"
+
+// Service 汇聚多源搜索
+type Service struct {
+	client *http.Client
+}
+
+// New 构造 Service；client 内部注意把 Transport 的 Proxy 设成 nil，
+// 避免 Windows 下读取 IE 代理而在 TUN 模式下打到没开的 HTTP 代理端口。
+func New() *Service {
+	return &Service{
+		client: &http.Client{
+			Timeout: 12 * time.Second,
+			Transport: &http.Transport{
+				Proxy:                 nil, // 显式不走系统代理
+				ForceAttemptHTTP2:     true,
+				MaxIdleConns:          20,
+				IdleConnTimeout:       30 * time.Second,
+				TLSHandshakeTimeout:   8 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			},
+		},
+	}
+}
+
+// Search 并发执行所有请求的源。任一源失败不影响其它源返回。
+func (s *Service) Search(ctx context.Context, req SearchRequest) (*SearchResponse, error) {
+	keyword := strings.TrimSpace(req.Keyword)
+	if keyword == "" {
+		return nil, errors.New("keyword 不能为空")
+	}
+	sources := req.Sources
+	if len(sources) == 0 {
+		sources = defaultSources()
+	}
+	country := req.Country
+	if country == "" {
+		country = "cn"
+	}
+
+	var (
+		mu       sync.Mutex
+		items    []SearchResultItem
+		statuses []SourceStatus
+		wg       sync.WaitGroup
+	)
+
+	for _, src := range sources {
+		src := src
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			status := SourceStatus{Source: src}
+			results, err := s.runSource(ctx, src, keyword, country, req)
+			if err != nil {
+				status.Error = err.Error()
+			} else {
+				status.OK = true
+				status.Count = len(results)
+			}
+			mu.Lock()
+			statuses = append(statuses, status)
+			items = append(items, results...)
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+
+	// 保持 statuses 顺序稳定（按 sources 顺序）
+	statuses = sortStatuses(sources, statuses)
+
+	return &SearchResponse{
+		Items:    items,
+		Statuses: statuses,
+	}, nil
+}
+
+func (s *Service) runSource(ctx context.Context, src SourceID, keyword, country string, req SearchRequest) ([]SearchResultItem, error) {
+	switch src {
+	case SourceITunes:
+		return searchITunes(ctx, s.client, keyword, country, 20)
+	case SourceQimaiIOS:
+		return searchQimaiIOS(ctx, s.client, keyword, country)
+	case SourceQimaiAndroid:
+		return searchQimaiAndroid(ctx, s.client, keyword, country, req.Market, req.qimaiPhpSessID)
+	case SourceYingYongBao:
+		return searchYingYongBao(ctx, s.client, keyword, 20)
+	case SourceGooglePlay:
+		// Google Play 固定 gl=us lang=en：gl=cn 会被 Google 或 GFW 拦截，
+		// 国内用户搜 GP 的目的本来也是找海外 Android 包名。
+		return searchGooglePlay(ctx, s.client, keyword, "us", "en")
+	default:
+		return nil, errSourceNotSupported(src)
+	}
+}
+
+func defaultSources() []SourceID {
+	return []SourceID{SourceITunes, SourceQimaiIOS, SourceQimaiAndroid, SourceYingYongBao, SourceGooglePlay}
+}
+
+func sortStatuses(order []SourceID, in []SourceStatus) []SourceStatus {
+	idx := make(map[SourceID]int, len(order))
+	for i, s := range order {
+		idx[s] = i
+	}
+	out := make([]SourceStatus, len(in))
+	copy(out, in)
+	// insertion sort — 数量小
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && idx[out[j].Source] < idx[out[j-1].Source]; j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
+	return out
+}
+
+func errSourceNotSupported(src SourceID) error {
+	return &unsupportedSourceError{src: src}
+}
+
+type unsupportedSourceError struct{ src SourceID }
+
+func (e *unsupportedSourceError) Error() string {
+	return "source not supported yet: " + string(e.src)
+}

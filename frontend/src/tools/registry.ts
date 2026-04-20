@@ -4,6 +4,9 @@ import type { ComponentType } from 'react'
 import MobileForensic from './mobile-forensic'
 import { meta as mobileForensicMeta } from './mobile-forensic/meta'
 
+import AppSearch from './app-search'
+import { meta as appSearchMeta } from './app-search/meta'
+
 import JsonEditor from './json-editor'
 import { meta as jsonEditorMeta } from './json-editor/meta'
 
@@ -83,6 +86,7 @@ export interface ToolEntry {
 
 export const tools: ToolEntry[] = [
   { meta: mobileForensicMeta, Component: MobileForensic },
+  { meta: appSearchMeta, Component: AppSearch },
   { meta: jsonEditorMeta, Component: JsonEditor },
   { meta: plistMeta, Component: Plist },
   { meta: jsonToGoMeta, Component: JsonToGo },

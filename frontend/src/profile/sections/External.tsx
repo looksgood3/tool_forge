@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, CheckCircle2, FolderOpen, RefreshCw } from 'lucide-react'
+import {
+  AlertCircle,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  FolderOpen,
+  KeyRound,
+  RefreshCw,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   CheckForensic,
+  HasQimaiPhpSessID,
   PickExecutable,
+  SaveQimaiPhpSessID,
   SetForensicBinaryPath,
 } from '../../../wailsjs/go/main/App'
 import { useForensicStore } from '@/stores/forensic'
@@ -15,11 +25,134 @@ export function ExternalSection() {
       <header>
         <h1 className="text-xl font-semibold">外部工具</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          配置 Tool Forge 依赖的外部命令行工具。路径为空表示使用系统 PATH。
+          配置 Tool Forge 依赖的外部命令行工具与数据源凭证。
         </p>
       </header>
 
       <GoForensicCard />
+      <QimaiPhpSessIDCard />
+    </div>
+  )
+}
+
+function QimaiPhpSessIDCard() {
+  const [configured, setConfigured] = useState<boolean | null>(null)
+  const [value, setValue] = useState('')
+  const [show, setShow] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+
+  const refresh = async () => {
+    try {
+      setConfigured(await HasQimaiPhpSessID())
+    } catch {
+      setConfigured(false)
+    }
+  }
+
+  useEffect(() => {
+    refresh()
+  }, [])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await SaveQimaiPhpSessID(value.trim())
+      setValue('')
+      setSavedAt(Date.now())
+      await refresh()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const clear = async () => {
+    setSaving(true)
+    try {
+      await SaveQimaiPhpSessID('')
+      setValue('')
+      setSavedAt(null)
+      await refresh()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-5">
+      <div className="mb-1 flex items-center justify-between">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <KeyRound className="h-4 w-4" />
+          七麦登录态
+        </h2>
+        <span className="text-xs text-muted-foreground">包名搜索 · Android 源</span>
+      </div>
+      <p className="mb-4 text-xs text-muted-foreground">
+        七麦 Android 搜索接口需要登录态 Cookie。登录 www.qimai.cn 后在浏览器
+        DevTools 里复制 <code className="font-mono">PHPSESSID</code> 的值粘贴到此处。
+        值通过系统凭据库（Windows Credential Manager / macOS Keychain）加密存储，不会落到磁盘明文。
+      </p>
+
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">PHPSESSID</label>
+          <div className="flex gap-2">
+            <input
+              type={show ? 'text' : 'password'}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder={configured ? '已保存，输入新值覆盖' : '粘贴 PHPSESSID 的值'}
+              spellCheck={false}
+              className="h-9 flex-1 rounded-md border border-input bg-background px-3 font-mono text-xs outline-none focus:ring-1 focus:ring-ring"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShow((v) => !v)}
+              type="button"
+              title={show ? '隐藏' : '显示'}
+            >
+              {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </Button>
+            <Button size="sm" onClick={save} disabled={saving || value.trim().length === 0}>
+              保存
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between rounded-md border border-dashed border-border bg-muted/30 p-3 text-xs">
+          {configured === null ? (
+            <span className="flex items-center gap-2 text-muted-foreground">
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              检测中…
+            </span>
+          ) : configured ? (
+            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              已保存在系统凭据库
+              {savedAt && (
+                <span className="text-muted-foreground">
+                  · {new Date(savedAt).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <AlertCircle className="h-3.5 w-3.5" />
+              未配置，七麦 Android 源将不可用
+            </div>
+          )}
+          {configured && (
+            <button
+              onClick={clear}
+              disabled={saving}
+              className="text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-destructive hover:underline"
+            >
+              清除
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

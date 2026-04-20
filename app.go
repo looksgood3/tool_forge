@@ -12,6 +12,7 @@ import (
 
 	"tool_forge/backend/system"
 	"tool_forge/backend/tools/aistupid"
+	"tool_forge/backend/tools/appsearch"
 	"tool_forge/backend/tools/charles"
 	"tool_forge/backend/tools/claudeinsight"
 	"tool_forge/backend/tools/codexinsight"
@@ -34,14 +35,16 @@ type AppInfo struct {
 
 // App struct
 type App struct {
-	ctx      context.Context
-	forensic *forensic.Service
+	ctx       context.Context
+	forensic  *forensic.Service
+	appsearch *appsearch.Service
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		forensic: forensic.New(),
+		forensic:  forensic.New(),
+		appsearch: appsearch.New(),
 	}
 }
 
@@ -90,6 +93,42 @@ func (a *App) RunForensic(args []string) (string, error) {
 // CancelForensic 取消正在执行的任务
 func (a *App) CancelForensic(jobID string) error {
 	return a.forensic.Cancel(jobID)
+}
+
+// ================ App Search ================
+
+// SearchApp 多源并发搜索 app 包名/基本信息。
+// 需要 PHPSESSID 的源（七麦 Android）在此从系统凭据库读取并注入。
+func (a *App) SearchApp(req appsearch.SearchRequest) (*appsearch.SearchResponse, error) {
+	if needsQimaiPhpSessID(req.Sources) {
+		if sid, err := system.GetPassword(appsearch.KeyringQimaiPhpSessID); err == nil && sid != "" {
+			req.SetQimaiPhpSessID(sid)
+		}
+	}
+	return a.appsearch.Search(a.ctx, req)
+}
+
+func needsQimaiPhpSessID(sources []appsearch.SourceID) bool {
+	for _, s := range sources {
+		if s == appsearch.SourceQimaiAndroid {
+			return true
+		}
+	}
+	return false
+}
+
+// HasQimaiPhpSessID 供 Profile 页判断凭据库里是否已保存 PHPSESSID（不泄露值）。
+func (a *App) HasQimaiPhpSessID() bool {
+	v, err := system.GetPassword(appsearch.KeyringQimaiPhpSessID)
+	return err == nil && v != ""
+}
+
+// SaveQimaiPhpSessID 保存 PHPSESSID 到系统凭据库；空字符串等价于删除。
+func (a *App) SaveQimaiPhpSessID(value string) error {
+	if value == "" {
+		return system.DeletePassword(appsearch.KeyringQimaiPhpSessID)
+	}
+	return system.SavePassword(appsearch.KeyringQimaiPhpSessID, value)
 }
 
 // ================ System ================
