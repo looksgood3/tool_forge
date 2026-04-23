@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import { ChevronLeft, Home as HomeIcon, User } from 'lucide-react'
+import { ChevronLeft, Home as HomeIcon, Search, User } from 'lucide-react'
 import { GetAppInfo } from '../../wailsjs/go/main/App'
 import type { main } from '../../wailsjs/go/models'
 import { useLayoutStore } from '@/stores/layout'
@@ -27,7 +27,11 @@ const CATEGORY_ORDER: ToolCategory[] = [
   'dev',
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  onOpenCommandPalette?: () => void
+}
+
+export function Sidebar({ onOpenCommandPalette }: SidebarProps = {}) {
   const collapsed = useLayoutStore((s) => s.sidebarCollapsed)
   const toggleSidebar = useLayoutStore((s) => s.toggleSidebar)
   const visibility = useToolsStore((s) => s.visibility)
@@ -101,7 +105,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2">
-        <div className="mb-3 px-2">
+        <div className="mb-3 px-2 space-y-0.5">
           <NavLink
             to="/"
             end
@@ -117,6 +121,27 @@ export function Sidebar() {
             <HomeIcon className="h-4 w-4 shrink-0" />
             {!collapsed && <span className="truncate">首页</span>}
           </NavLink>
+          {onOpenCommandPalette && (
+            <button
+              type="button"
+              onClick={onOpenCommandPalette}
+              title={collapsed ? '快速跳转 (Ctrl+K)' : undefined}
+              className={cn(
+                'flex h-8 w-full items-center gap-2 rounded-md px-2 text-sm text-foreground/80 transition-colors hover:bg-accent hover:text-foreground',
+                collapsed && 'justify-center'
+              )}
+            >
+              <Search className="h-4 w-4 shrink-0" />
+              {!collapsed && (
+                <>
+                  <span className="flex-1 truncate text-left">快速跳转</span>
+                  <kbd className="shrink-0 rounded border border-border bg-background/80 px-1 font-mono text-[10px] text-muted-foreground">
+                    Ctrl+K
+                  </kbd>
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {CATEGORY_ORDER.map((cat) => {

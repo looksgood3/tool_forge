@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { getToolComponent } from './registry'
+import { useRecentToolsStore } from '@/stores/recentTools'
 import { cn } from '@/lib/utils'
 
 /**
@@ -13,10 +14,14 @@ export function ToolRouter() {
   const { toolId } = useParams<{ toolId: string }>()
   const [mounted, setMounted] = useState<string[]>(() => (toolId ? [toolId] : []))
 
+  const pushRecent = useRecentToolsStore((s) => s.push)
+
   useEffect(() => {
     if (!toolId) return
     setMounted((prev) => (prev.includes(toolId) ? prev : [...prev, toolId]))
-  }, [toolId])
+    // 记录到"最近使用"——命令面板 / 未来的 Home 页快速入口都能用
+    if (getToolComponent(toolId)) pushRecent(toolId)
+  }, [toolId, pushRecent])
 
   if (!toolId) return <Navigate to="/" replace />
   if (!getToolComponent(toolId)) return <Navigate to="/" replace />
