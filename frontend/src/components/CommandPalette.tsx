@@ -9,6 +9,7 @@ import {
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { Clock, Search } from 'lucide-react'
+import { pinyin } from 'pinyin-pro'
 import { CATEGORY_LABELS, type ToolMeta } from '@/stores/tools'
 import { toolRegistry } from '@/tools/registry'
 import { useRecentToolsStore } from '@/stores/recentTools'
@@ -22,14 +23,60 @@ interface Props {
 interface ScoredItem {
   tool: ToolMeta
   score: number
-  /** highlightRanges: 命中位置,用于在 title 上加粗显示 */
+  /** highlightRanges: 命中位置,用于在 title 上加粗显示（拼音命中时为空） */
   matches: number[]
 }
 
+/** 工具的拼音索引（构建一次） */
+interface PinyinIndex {
+  /** 全拼,无声调,无空格 e.g. "shijianchuo" */
+  full: string
+  /** 首字母 e.g. "sjc" */
+  initials: string
+  /** segments[i] 是 title 第 i 个字符对应的全拼段（汉字 → "shi",英文 → 原字符,空白略过） */
+  segments: string[]
+  /** 与 segments 平行,每段对应 title 的字符索引（Array.from 切分） */
+  charIndex: number[]
+}
+
+const pinyinCache = new WeakMap<ToolMeta, PinyinIndex>()
+const HAN = /[一-鿿]/
+
+function getPinyinIndex(tool: ToolMeta): PinyinIndex {
+  const cached = pinyinCache.get(tool)
+  if (cached) return cached
+  const chars = Array.from(tool.title)
+  const segments: string[] = []
+  const charIndex: number[] = []
+  let full = ''
+  let initials = ''
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i]
+    if (HAN.test(ch)) {
+      const seg = (pinyin(ch, { toneType: 'none', type: 'string' }) as string).toLowerCase()
+      segments.push(seg)
+      charIndex.push(i)
+      full += seg
+      initials += seg[0] || ''
+    } else if (/\s/.test(ch)) {
+      // 空白不计入 full / initials,但占位以保持 segments 与可读性
+      continue
+    } else {
+      const lower = ch.toLowerCase()
+      segments.push(lower)
+      charIndex.push(i)
+      full += lower
+      initials += lower
+    }
+  }
+  const idx: PinyinIndex = { full, initials, segments, charIndex }
+  pinyinCache.set(tool, idx)
+  return idx
+}
+
 /** 简易 fuzzy 评分：
- *  - 全字符按顺序命中 title → 基础分;越靠前、越连续得分越高
- *  - description 命中得低分
- *  - id 完全匹配直接置顶
+ *  title 直接命中（substring/前缀/全等）走最高分,拼音 / 首字母次之,
+ *  字符顺序命中再次,description 兜底。
  *  返回 null 表示完全不匹配。
  */
 function fuzzyScore(
@@ -40,11 +87,29 @@ function fuzzyScore(
   if (!q) return { score: 0, matches: [] }
   const title = tool.title.toLowerCase()
   if (tool.id.toLowerCase() === q) return { score: 10000, matches: [] }
+  if (title === q) return { score: 8000, matches: range(0, title.length) }
   if (title.startsWith(q)) return { score: 5000 + (100 - title.length), matches: range(0, q.length) }
   if (title.includes(q)) {
     const idx = title.indexOf(q)
     return { score: 3000 - idx * 5, matches: range(idx, idx + q.length) }
   }
+
+  // 拼音匹配（仅当 query 是纯英文/数字时才走拼音,中文 query 走上面的 substring）
+  if (/^[a-z0-9]+$/.test(q)) {
+    const py = getPinyinIndex(tool)
+    // 全拼完全匹配 / 前缀 / 包含
+    if (py.full === q) return { score: 2600, matches: py.charIndex }
+    if (py.full.startsWith(q)) return { score: 2200 - (py.full.length - q.length) * 2, matches: pickCharsByPinyinPrefix(py, q) }
+    if (py.full.includes(q)) return { score: 1800 - py.full.indexOf(q) * 3, matches: [] }
+    // 首字母完全匹配 / 前缀 / 包含
+    if (py.initials === q) return { score: 2400, matches: py.charIndex }
+    if (py.initials.startsWith(q)) return { score: 2000 - (py.initials.length - q.length) * 2, matches: py.charIndex.slice(0, q.length) }
+    if (py.initials.includes(q)) {
+      const start = py.initials.indexOf(q)
+      return { score: 1600 - start * 3, matches: py.charIndex.slice(start, start + q.length) }
+    }
+  }
+
   // 字符顺序命中
   const matches: number[] = []
   let i = 0
@@ -66,6 +131,18 @@ function fuzzyScore(
   const desc = tool.description.toLowerCase()
   if (desc.includes(q)) return { score: 500 - desc.indexOf(q) * 2, matches: [] }
   return null
+}
+
+/** 拼音前缀命中时,根据 q 长度沿 segments 累加,返回应高亮的 title 字符索引 */
+function pickCharsByPinyinPrefix(py: PinyinIndex, q: string): number[] {
+  const out: number[] = []
+  let consumed = 0
+  for (let i = 0; i < py.segments.length; i++) {
+    if (consumed >= q.length) break
+    out.push(py.charIndex[i])
+    consumed += py.segments[i].length
+  }
+  return out
 }
 
 function range(a: number, b: number): number[] {
@@ -299,7 +376,7 @@ function Highlighted({
   if (set.size > 0) {
     return (
       <>
-        {text.split('').map((ch, i) => (
+        {Array.from(text).map((ch, i) => (
           <span
             key={i}
             className={cn(set.has(i) && 'font-semibold text-indigo-600 dark:text-indigo-300')}
