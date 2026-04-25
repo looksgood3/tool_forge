@@ -97,6 +97,9 @@ import { meta as clipboardMeta } from './clipboard/meta'
 import HttpTest from './http-test'
 import { meta as httpTestMeta } from './http-test/meta'
 
+import NetTools from './net-tools'
+import { meta as netToolsMeta } from './net-tools/meta'
+
 export interface ToolEntry {
   meta: ToolMeta
   Component: ComponentType
@@ -135,6 +138,7 @@ export const tools: ToolEntry[] = [
   { meta: codexInsightMeta, Component: CodexInsight },
   { meta: aiStupidMeta, Component: AIStupid },
   { meta: httpTestMeta, Component: HttpTest },
+  { meta: netToolsMeta, Component: NetTools },
 ]
 
 export const toolRegistry: ToolMeta[] = tools.map((t) => t.meta)

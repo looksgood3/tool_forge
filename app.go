@@ -20,6 +20,7 @@ import (
 	"tool_forge/backend/tools/envscan"
 	"tool_forge/backend/tools/forensic"
 	"tool_forge/backend/tools/httptest"
+	"tool_forge/backend/tools/netscan"
 	"tool_forge/backend/updater"
 )
 
@@ -204,6 +205,28 @@ func (a *App) ClearHTTPHistory() {
 		return
 	}
 	a.httptest.ClearHistory()
+}
+
+// ================ 网络工具(SSL / DNS / WHOIS / 端口) ================
+
+// CheckSSLCert 拉 host:port 的 TLS 证书链
+func (a *App) CheckSSLCert(host string, port int) netscan.SSLResult {
+	return netscan.CheckSSL(host, port, 8000)
+}
+
+// LookupDNSRecords 查 DNS 记录;types 为空时查 A/AAAA/CNAME/MX/TXT/NS
+func (a *App) LookupDNSRecords(domain string, types []string) netscan.DNSResult {
+	return netscan.LookupDNS(domain, types)
+}
+
+// LookupWhoisInfo 走 TCP 43 查 WHOIS
+func (a *App) LookupWhoisInfo(domain string) netscan.WhoisResult {
+	return netscan.LookupWhois(domain)
+}
+
+// ScanPorts 并发探测端口列表是否开放
+func (a *App) ScanPorts(host string, ports []int, timeoutMs int) netscan.PortResult {
+	return netscan.ScanPorts(host, ports, timeoutMs)
 }
 
 // ResetAllData 清空整个 ~/.toolforge 目录,前端在调用前应清自家 localStorage,
