@@ -4,6 +4,7 @@ package system
 import (
 	"context"
 	"fmt"
+	"github.com/zalando/go-keyring"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,7 +12,6 @@ import (
 	"strings"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
-	
 )
 
 const keyringService = "tool-forge"
