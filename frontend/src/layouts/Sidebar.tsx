@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import { ChevronLeft, Home as HomeIcon, Search, User } from 'lucide-react'
+import { ChevronLeft, Home as HomeIcon, Pin, Search, User } from 'lucide-react'
 import { GetAppInfo } from '../../wailsjs/go/main/App'
 import type { main } from '../../wailsjs/go/models'
+import { ToolContextMenu } from '@/components/ToolContextMenu'
 import { useLayoutStore } from '@/stores/layout'
 import {
   CATEGORY_LABELS,
+  getAllTools,
   getVisibleToolsByCategory,
+  isVisible,
   useToolsStore,
   type ToolCategory,
+  type ToolMeta,
 } from '@/stores/tools'
+import { usePinnedToolsStore, PINNED_LIMIT } from '@/stores/pinnedTools'
 import { useProfileStore } from '@/stores/profile'
 import { useUpdaterStore } from '@/stores/updater'
 import { cn } from '@/lib/utils'
@@ -38,8 +43,32 @@ export function Sidebar({ onOpenCommandPalette }: SidebarProps = {}) {
   const visibility = useToolsStore((s) => s.visibility)
   const order = useToolsStore((s) => s.order)
   const nickname = useProfileStore((s) => s.nickname)
+  const pinnedIds = usePinnedToolsStore((s) => s.ids)
+  const togglePin = usePinnedToolsStore((s) => s.toggle)
   const grouped = getVisibleToolsByCategory(visibility, order)
   const [info, setInfo] = useState<main.AppInfo | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; toolId: string } | null>(null)
+
+  // 收藏 dock:仅在展开态显示
+  const pinnedTools: ToolMeta[] = (() => {
+    if (collapsed || pinnedIds.length === 0) return []
+    const byId = new Map(getAllTools(order).map((t) => [t.id, t]))
+    const out: ToolMeta[] = []
+    for (const id of pinnedIds) {
+      const t = byId.get(id)
+      if (!t) continue
+      if (!isVisible(t.id, visibility, t.defaultVisible)) continue
+      out.push(t)
+    }
+    return out
+  })()
+
+  const openMenu = (e: React.MouseEvent, toolId: string) => {
+    e.preventDefault()
+    setMenu({ x: e.clientX, y: e.clientY, toolId })
+  }
+  const pinnedSet = new Set(pinnedIds)
+  const isFull = pinnedIds.length >= PINNED_LIMIT
 
   const updStatus = useUpdaterStore((s) => s.status)
   const updLatest = useUpdaterStore((s) => s.latestVersion)
@@ -145,6 +174,41 @@ export function Sidebar({ onOpenCommandPalette }: SidebarProps = {}) {
           )}
         </div>
 
+        {!collapsed && (
+          <div className="mb-3 px-2">
+            {pinnedTools.length > 0 ? (
+              <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-secondary/40 p-1.5">
+                {pinnedTools.map((tool) => {
+                  const Icon = tool.icon
+                  return (
+                    <NavLink
+                      key={`pin-${tool.id}`}
+                      to={tool.path}
+                      title={`${tool.title}（右键取消收藏）`}
+                      onContextMenu={(e) => openMenu(e, tool.id)}
+                      className={({ isActive }) =>
+                        cn(
+                          'relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-all',
+                          isActive
+                            ? 'bg-indigo-500 text-white shadow-sm shadow-indigo-500/30'
+                            : 'text-muted-foreground hover:scale-110 hover:bg-background hover:text-foreground hover:shadow-sm'
+                        )
+                      }
+                    >
+                      <Icon className="h-4 w-4" />
+                    </NavLink>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border/50 bg-secondary/20 px-2 py-2 text-[11px] text-muted-foreground">
+                <Pin className="h-3 w-3" />
+                <span>右键工具收藏到此</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {CATEGORY_ORDER.map((cat) => {
           const tools = grouped[cat]
           if (!tools || tools.length === 0) return null
@@ -158,21 +222,33 @@ export function Sidebar({ onOpenCommandPalette }: SidebarProps = {}) {
               <ul className="space-y-0.5 px-2">
                 {tools.map((tool) => {
                   const Icon = tool.icon
+                  const pinned = pinnedSet.has(tool.id)
                   return (
                     <li key={tool.id}>
                       <NavLink
                         to={tool.path}
                         title={collapsed ? tool.title : undefined}
+                        onContextMenu={(e) => openMenu(e, tool.id)}
                         className={({ isActive }) =>
                           cn(
-                            'flex h-8 items-center gap-2 rounded-md px-2 text-sm text-foreground/80 transition-colors hover:bg-accent hover:text-foreground',
+                            'group/tool flex h-8 items-center gap-2 rounded-md px-2 text-sm text-foreground/80 transition-colors hover:bg-accent hover:text-foreground',
                             isActive && 'bg-accent font-medium text-foreground',
                             collapsed && 'justify-center'
                           )
                         }
                       >
                         <Icon className="h-4 w-4 shrink-0" />
-                        {!collapsed && <span className="truncate">{tool.title}</span>}
+                        {!collapsed && (
+                          <>
+                            <span className="truncate">{tool.title}</span>
+                            {pinned && (
+                              <Pin
+                                className="ml-auto h-3 w-3 shrink-0 fill-indigo-500/60 text-indigo-500/60"
+                                aria-label="已收藏"
+                              />
+                            )}
+                          </>
+                        )}
                       </NavLink>
                     </li>
                   )
@@ -201,6 +277,17 @@ export function Sidebar({ onOpenCommandPalette }: SidebarProps = {}) {
           {!collapsed && <span className="truncate">{nickname}</span>}
         </NavLink>
       </div>
+
+      {menu && (
+        <ToolContextMenu
+          x={menu.x}
+          y={menu.y}
+          pinned={pinnedSet.has(menu.toolId)}
+          full={isFull}
+          onToggle={() => togglePin(menu.toolId)}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </aside>
   )
 }

@@ -82,6 +82,16 @@ function getPinyinIndex(tool: ToolMeta): PinyinIndex {
 function fuzzyScore(
   query: string,
   tool: ToolMeta,
+  usageBonus = 0,
+): { score: number; matches: number[] } | null {
+  const r = fuzzyScoreRaw(query, tool)
+  if (!r) return null
+  return { score: r.score + usageBonus, matches: r.matches }
+}
+
+function fuzzyScoreRaw(
+  query: string,
+  tool: ToolMeta,
 ): { score: number; matches: number[] } | null {
   const q = query.trim().toLowerCase()
   if (!q) return { score: 0, matches: [] }
@@ -154,6 +164,7 @@ function range(a: number, b: number): number[] {
 export function CommandPalette({ open, onClose }: Props) {
   const navigate = useNavigate()
   const recentIds = useRecentToolsStore((s) => s.ids)
+  const counts = useRecentToolsStore((s) => s.counts)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -188,12 +199,15 @@ export function CommandPalette({ open, onClose }: Props) {
     }
     const scored: ScoredItem[] = []
     for (const tool of toolRegistry) {
-      const r = fuzzyScore(q, tool)
+      // 高频工具加权:每次使用 +1 分,封顶 50 分,不让它压过 title 直接命中(>=3000)
+      // 但足以在多个相同等级匹配里把高频项排前面
+      const bonus = Math.min(counts[tool.id] ?? 0, 50)
+      const r = fuzzyScore(q, tool, bonus)
       if (r) scored.push({ tool, score: r.score, matches: r.matches })
     }
     scored.sort((a, b) => b.score - a.score)
     return scored.slice(0, 30)
-  }, [query, recentIds])
+  }, [query, recentIds, counts])
 
   const showingRecents = !query.trim() && recentIds.length > 0
 
