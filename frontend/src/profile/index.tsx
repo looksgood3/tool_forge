@@ -5,6 +5,7 @@ import {
   ClipboardList,
   Database,
   Info,
+  Keyboard,
   Palette,
   Plug,
   SlidersHorizontal,
@@ -16,12 +17,14 @@ import { AboutSection } from './sections/About'
 import { BasicSection } from './sections/Basic'
 import { ClipboardSection } from './sections/Clipboard'
 import { ExternalSection } from './sections/External'
+import { HotkeysSection } from './sections/Hotkeys'
 import { PlaceholderSection } from './sections/Placeholder'
 
 type SectionId =
   | 'basic'
   | 'external'
   | 'clipboard'
+  | 'hotkeys'
   | 'ai'
   | 'usage'
   | 'preferences'
@@ -39,6 +42,7 @@ const SECTIONS: Section[] = [
   { id: 'basic', label: '基础信息', icon: User },
   { id: 'external', label: '外部工具', icon: Plug },
   { id: 'clipboard', label: '剪贴板', icon: ClipboardList },
+  { id: 'hotkeys', label: '快捷键', icon: Keyboard },
   { id: 'ai', label: 'AI 配置', icon: Bot, comingSoon: true },
   { id: 'usage', label: 'AI 用量', icon: SlidersHorizontal, comingSoon: true },
   { id: 'preferences', label: '工具偏好', icon: Palette, comingSoon: true },
@@ -95,6 +99,8 @@ export function Profile() {
           <ExternalSection />
         ) : active === 'clipboard' ? (
           <ClipboardSection />
+        ) : active === 'hotkeys' ? (
+          <HotkeysSection />
         ) : active === 'about' ? (
           <AboutSection />
         ) : (

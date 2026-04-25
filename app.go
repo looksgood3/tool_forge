@@ -9,7 +9,6 @@ import (
 	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
-	"golang.design/x/hotkey"
 
 	"tool_forge/backend/system"
 	"tool_forge/backend/tools/aistupid"
@@ -41,6 +40,7 @@ type App struct {
 	forensic  *forensic.Service
 	appsearch *appsearch.Service
 	clipboard *clipboard.Service
+	hotkey    *system.Manager
 }
 
 // NewApp creates a new App application struct
@@ -50,10 +50,24 @@ func NewApp() *App {
 		// 数据目录创建失败时降级:服务为 nil,前端 RPC 会得到默认错误
 		clip = nil
 	}
+	// 全局热键 manager:声明所有可绑定的 action,用户可在 Profile → 快捷键里自定义
+	hkConfig := ""
+	if home, err := os.UserHomeDir(); err == nil {
+		hkConfig = filepath.Join(home, ".toolforge", "hotkeys.json")
+	}
+	hkManager := system.NewManager([]system.Action{
+		{
+			ID:          "clipboard.open",
+			Label:       "打开剪贴板历史",
+			Event:       "nav:goto-clipboard",
+			DefaultSpec: "Ctrl+Shift+V",
+		},
+	}, hkConfig)
 	return &App{
 		forensic:  forensic.New(),
 		appsearch: appsearch.New(),
 		clipboard: clip,
+		hotkey:    hkManager,
 	}
 }
 
@@ -66,15 +80,10 @@ func (a *App) startup(ctx context.Context) {
 		a.clipboard.Start(ctx)
 		a.clipboard.LogStartup()
 	}
-	// 注册全局热键 Ctrl+Shift+V → 唤起主窗 + 前端跳转剪贴板页
-	system.RegisterGlobalHotkeys(ctx, []system.HotkeySpec{
-		{
-			Mods:  []hotkey.Modifier{hotkey.ModCtrl, hotkey.ModShift},
-			Key:   hotkey.KeyV,
-			Event: "nav:goto-clipboard",
-			Label: "Ctrl+Shift+V (Clipboard)",
-		},
-	})
+	// 启动全局热键 manager(从 ~/.toolforge/hotkeys.json 读用户配置)
+	if a.hotkey != nil {
+		a.hotkey.Start(ctx)
+	}
 }
 
 // shutdown 在 Wails 关闭前调用,释放剪贴板监听等
@@ -82,6 +91,41 @@ func (a *App) shutdown(ctx context.Context) {
 	if a.clipboard != nil {
 		a.clipboard.Stop()
 	}
+	if a.hotkey != nil {
+		a.hotkey.Stop()
+	}
+}
+
+// ================ Hotkey 管理(供 Profile → 快捷键 调用) ================
+
+// ListHotkeys 返回所有可绑定的全局热键 + 当前状态
+func (a *App) ListHotkeys() []system.HotkeyInfo {
+	if a.hotkey == nil {
+		return nil
+	}
+	return a.hotkey.List()
+}
+
+// SetHotkey 重新绑定某个 action;spec 为空表示取消绑定
+func (a *App) SetHotkey(id, spec string) string {
+	if a.hotkey == nil {
+		return "热键 manager 未初始化"
+	}
+	if err := a.hotkey.Set(id, spec); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// ResetHotkey 把某个 action 还原成默认
+func (a *App) ResetHotkey(id string) string {
+	if a.hotkey == nil {
+		return "热键 manager 未初始化"
+	}
+	if err := a.hotkey.Reset(id); err != nil {
+		return err.Error()
+	}
+	return ""
 }
 
 // GetAppInfo 返回应用与运行环境信息
