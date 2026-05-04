@@ -11,6 +11,7 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"tool_forge/backend/system"
+	"tool_forge/backend/tools/aichat"
 	"tool_forge/backend/tools/aistupid"
 	"tool_forge/backend/tools/appsearch"
 	"tool_forge/backend/tools/charles"
@@ -46,6 +47,7 @@ type App struct {
 	hotkey    *system.Manager
 	httptest  *httptest.Service
 	provider  *providerswitch.Service
+	aichat    *aichat.Service
 }
 
 // NewApp creates a new App application struct
@@ -70,6 +72,7 @@ func NewApp() *App {
 	}, hkConfig)
 	htt, _ := httptest.New()
 	prov, _ := providerswitch.New()
+	aic, _ := aichat.New()
 	return &App{
 		forensic:  forensic.New(),
 		appsearch: appsearch.New(),
@@ -77,6 +80,7 @@ func NewApp() *App {
 		hotkey:    hkManager,
 		httptest:  htt,
 		provider:  prov,
+		aichat:    aic,
 	}
 }
 
@@ -92,6 +96,10 @@ func (a *App) startup(ctx context.Context) {
 	// 启动全局热键 manager(从 ~/.toolforge/hotkeys.json 读用户配置)
 	if a.hotkey != nil {
 		a.hotkey.Start(ctx)
+	}
+	// AI 聊天 service 需要持有 wails ctx 才能 EventsEmit
+	if a.aichat != nil {
+		a.aichat.SetWailsContext(ctx)
 	}
 }
 
@@ -762,4 +770,177 @@ func (a *App) OpenDownloadsFolder() error {
 		return err
 	}
 	return system.OpenInExplorer(filepath.Join(home, "Downloads"))
+}
+
+// ================ AI 问答(OpenAI 兼容供应商) ================
+
+// ListAIProviders 列出所有 AI 供应商(按 UpdatedAt 倒序)
+func (a *App) ListAIProviders() []aichat.Provider {
+	if a.aichat == nil {
+		return nil
+	}
+	list, _ := a.aichat.ListProviders()
+	return list
+}
+
+// SaveAIProvider 新增或更新供应商;ID 为空 → 新增
+func (a *App) SaveAIProvider(p aichat.Provider) (aichat.Provider, string) {
+	if a.aichat == nil {
+		return aichat.Provider{}, "AI 服务未初始化"
+	}
+	saved, err := a.aichat.SaveProvider(p)
+	if err != nil {
+		return aichat.Provider{}, err.Error()
+	}
+	return saved, ""
+}
+
+// DeleteAIProvider 删除一条供应商
+func (a *App) DeleteAIProvider(id string) string {
+	if a.aichat == nil {
+		return "AI 服务未初始化"
+	}
+	if err := a.aichat.DeleteProvider(id); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// ToggleAIProvider 启用/禁用一条供应商
+func (a *App) ToggleAIProvider(id string, enabled bool) string {
+	if a.aichat == nil {
+		return "AI 服务未初始化"
+	}
+	if err := a.aichat.ToggleProvider(id, enabled); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// FetchAIModels 拉某个供应商的 /v1/models
+func (a *App) FetchAIModels(providerID string) aichat.FetchModelsResult {
+	if a.aichat == nil {
+		return aichat.FetchModelsResult{OK: false, Message: "AI 服务未初始化"}
+	}
+	return a.aichat.FetchModels(providerID)
+}
+
+// TestAIProviderModel 用某个模型发一个 stream 探测请求(收到首 chunk 即成功)
+func (a *App) TestAIProviderModel(providerID, modelID string) aichat.TestResult {
+	if a.aichat == nil {
+		return aichat.TestResult{OK: false, Message: "AI 服务未初始化"}
+	}
+	return a.aichat.TestProviderModel(providerID, modelID)
+}
+
+// GetAIConfig 默认助手模型
+func (a *App) GetAIConfig() aichat.Config {
+	if a.aichat == nil {
+		return aichat.Config{}
+	}
+	c, _ := a.aichat.GetConfig()
+	return c
+}
+
+// SaveAIConfig 保存默认助手模型
+func (a *App) SaveAIConfig(c aichat.Config) string {
+	if a.aichat == nil {
+		return "AI 服务未初始化"
+	}
+	if err := a.aichat.SaveConfig(c); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// ListAIConversations 列出所有会话(按 UpdatedAt 倒序)
+func (a *App) ListAIConversations() []aichat.ConversationSummary {
+	if a.aichat == nil {
+		return nil
+	}
+	list, _ := a.aichat.ListConversations()
+	return list
+}
+
+// GetAIConversation 取一条会话(含全部消息)
+func (a *App) GetAIConversation(id string) (aichat.Conversation, string) {
+	if a.aichat == nil {
+		return aichat.Conversation{}, "AI 服务未初始化"
+	}
+	c, err := a.aichat.GetConversation(id)
+	if err != nil {
+		return aichat.Conversation{}, err.Error()
+	}
+	return *c, ""
+}
+
+// CreateAIConversation 新建会话;providerID + modelID 决定本会话使用的模型
+func (a *App) CreateAIConversation(providerID, modelID, title string) (aichat.Conversation, string) {
+	if a.aichat == nil {
+		return aichat.Conversation{}, "AI 服务未初始化"
+	}
+	c, err := a.aichat.CreateConversation(providerID, modelID, title)
+	if err != nil {
+		return aichat.Conversation{}, err.Error()
+	}
+	return *c, ""
+}
+
+// UpdateAIConversationModel 切换会话的供应商 / 模型
+func (a *App) UpdateAIConversationModel(id, providerID, modelID string) string {
+	if a.aichat == nil {
+		return "AI 服务未初始化"
+	}
+	if err := a.aichat.UpdateConversationModel(id, providerID, modelID); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// RenameAIConversation 重命名会话
+func (a *App) RenameAIConversation(id, title string) string {
+	if a.aichat == nil {
+		return "AI 服务未初始化"
+	}
+	if err := a.aichat.RenameConversation(id, title); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// DeleteAIConversation 删除一条会话(同时取消进行中的流)
+func (a *App) DeleteAIConversation(id string) string {
+	if a.aichat == nil {
+		return "AI 服务未初始化"
+	}
+	if err := a.aichat.DeleteConversationByID(id); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// SendAIChat 在会话里追加 user 消息并启动流式回复
+//
+//	返回的 Conversation 已含 user 消息 + 空 assistant 占位;
+//	后续每个 chunk 通过事件 ai-chat:chunk:{id} / done:{id} / error:{id} 推送
+func (a *App) SendAIChat(convID, userContent string) (aichat.Conversation, string) {
+	if a.aichat == nil {
+		return aichat.Conversation{}, "AI 服务未初始化"
+	}
+	c, err := a.aichat.SendChat(a.ctx, convID, userContent)
+	if err != nil {
+		return aichat.Conversation{}, err.Error()
+	}
+	return *c, ""
+}
+
+// StopAIChat 取消正在进行的流;若该会话没有正在进行的流则返回错误
+func (a *App) StopAIChat(convID string) string {
+	if a.aichat == nil {
+		return "AI 服务未初始化"
+	}
+	if !a.aichat.CancelStream(convID) {
+		return "该会话没有进行中的请求"
+	}
+	return ""
 }

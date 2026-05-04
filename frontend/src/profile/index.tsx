@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AboutSection } from './sections/About'
+import { AIChatSection } from './sections/AIChat'
 import { BasicSection } from './sections/Basic'
 import { ClipboardSection } from './sections/Clipboard'
 import { DataSection } from './sections/Data'
@@ -44,7 +45,7 @@ const SECTIONS: Section[] = [
   { id: 'external', label: '外部工具', icon: Plug },
   { id: 'clipboard', label: '剪贴板', icon: ClipboardList },
   { id: 'hotkeys', label: '快捷键', icon: Keyboard },
-  { id: 'ai', label: 'AI 配置', icon: Bot, comingSoon: true },
+  { id: 'ai', label: 'AI 配置', icon: Bot },
   { id: 'usage', label: 'AI 用量', icon: SlidersHorizontal, comingSoon: true },
   { id: 'preferences', label: '工具偏好', icon: Palette, comingSoon: true },
   { id: 'data', label: '数据', icon: Database },
@@ -102,6 +103,8 @@ export function Profile() {
           <ClipboardSection />
         ) : active === 'hotkeys' ? (
           <HotkeysSection />
+        ) : active === 'ai' ? (
+          <AIChatSection />
         ) : active === 'data' ? (
           <DataSection />
         ) : active === 'about' ? (
