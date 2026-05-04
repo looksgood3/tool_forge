@@ -14,15 +14,26 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// ModuleStorage 单个工具模块在 ~/.toolforge 下的占用情况;
+// 数据页"模块占用"区按这个列表渲染,不在前端硬编码模块清单
+type ModuleStorage struct {
+	Key     string `json:"key"`     // 稳定标识(供前端图标/i18n 用)
+	Label   string `json:"label"`   // 中文展示名
+	Path    string `json:"path"`    // 完整路径(可能是目录或单文件)
+	IsDir   bool   `json:"isDir"`   // true=目录,false=单文件
+	Bytes   int64  `json:"bytes"`   // 占用字节
+	Files   int    `json:"files"`   // 文件数(单文件 = 1)
+	Exists  bool   `json:"exists"`  // 路径是否存在(不存在仍展示为 0)
+	SubInfo string `json:"subInfo,omitempty"` // 额外信息,如"32 张图片"/"5 个会话"
+}
+
 // DataStats 是个人主页 → 数据 页面要展示的本地数据概览
 type DataStats struct {
-	DataDir       string `json:"dataDir"`
-	TotalBytes    int64  `json:"totalBytes"`
-	TotalFiles    int    `json:"totalFiles"`
-	ClipboardDir  string `json:"clipboardDir"`
-	ClipboardSize int64  `json:"clipboardSize"`
-	ClipboardImgs int    `json:"clipboardImgs"`
-	HasHotkeys    bool   `json:"hasHotkeys"`
+	DataDir    string          `json:"dataDir"`
+	TotalBytes int64           `json:"totalBytes"`
+	TotalFiles int             `json:"totalFiles"`
+	Modules    []ModuleStorage `json:"modules"`
+	HasHotkeys bool            `json:"hasHotkeys"`
 }
 
 // ToolforgeDir 返回 ~/.toolforge,空字符串表示无法定位 home
@@ -34,27 +45,18 @@ func ToolforgeDir() string {
 	return filepath.Join(home, ".toolforge")
 }
 
-// CollectDataStats 扫描 ~/.toolforge,统计文件数 / 总字节 + 剪贴板细分
+// CollectDataStats 扫描 ~/.toolforge,统计总占用 + 每个模块的占用
 func CollectDataStats() (*DataStats, error) {
 	dir := ToolforgeDir()
 	stats := &DataStats{DataDir: dir}
 	if dir == "" {
 		return stats, nil
 	}
-	stats.ClipboardDir = filepath.Join(dir, "clipboard")
-	clipImgDir := filepath.Join(stats.ClipboardDir, "images")
-	hotkeyPath := filepath.Join(dir, "hotkeys.json")
 
-	if _, err := os.Stat(hotkeyPath); err == nil {
-		stats.HasHotkeys = true
-	}
 	// 整目录大小 + 文件数
 	if _, err := os.Stat(dir); err == nil {
 		_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if d.IsDir() {
+			if err != nil || d.IsDir() {
 				return nil
 			}
 			info, err := d.Info()
@@ -63,17 +65,117 @@ func CollectDataStats() (*DataStats, error) {
 			}
 			stats.TotalBytes += info.Size()
 			stats.TotalFiles++
-			if strings.HasPrefix(path, stats.ClipboardDir) {
-				stats.ClipboardSize += info.Size()
-			}
 			return nil
 		})
 	}
-	if _, err := os.Stat(clipImgDir); err == nil {
-		entries, _ := os.ReadDir(clipImgDir)
-		stats.ClipboardImgs = len(entries)
+
+	hotkeyPath := filepath.Join(dir, "hotkeys.json")
+	if _, err := os.Stat(hotkeyPath); err == nil {
+		stats.HasHotkeys = true
+	}
+
+	// 模块定义:稳定的 key + 中文 label + 相对路径 + 是否目录 + 可选的 subInfo
+	type modDef struct {
+		key, label, rel string
+		isDir           bool
+		subInfo         func(path string) string
+	}
+	defs := []modDef{
+		{"ai-chat", "AI 对话", "ai-chat", true, aiChatSubInfo},
+		{"clipboard", "剪贴板历史", "clipboard", true, clipboardSubInfo},
+		{"http-test", "HTTP 测试历史", "http-history.json", false, nil},
+		{"provider-switch", "Provider 切换配置", "providers.json", false, nil},
+		{"hotkeys", "全局热键", "hotkeys.json", false, nil},
+	}
+	stats.Modules = make([]ModuleStorage, 0, len(defs))
+	for _, m := range defs {
+		full := filepath.Join(dir, m.rel)
+		ms := ModuleStorage{Key: m.key, Label: m.label, Path: full, IsDir: m.isDir}
+		if info, err := os.Stat(full); err == nil {
+			ms.Exists = true
+			if m.isDir {
+				ms.Bytes, ms.Files = walkSize(full)
+			} else {
+				ms.Bytes = info.Size()
+				ms.Files = 1
+			}
+			if m.subInfo != nil {
+				ms.SubInfo = m.subInfo(full)
+			}
+		}
+		stats.Modules = append(stats.Modules, ms)
 	}
 	return stats, nil
+}
+
+func walkSize(dir string) (int64, int) {
+	var b int64
+	var f int
+	_ = filepath.WalkDir(dir, func(_ string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		info, _ := d.Info()
+		if info != nil {
+			b += info.Size()
+			f++
+		}
+		return nil
+	})
+	return b, f
+}
+
+func aiChatSubInfo(dir string) string {
+	convDir := filepath.Join(dir, "conversations")
+	entries, _ := os.ReadDir(convDir)
+	n := 0
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
+			n++
+		}
+	}
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d 个会话", n)
+}
+
+func clipboardSubInfo(dir string) string {
+	imgDir := filepath.Join(dir, "images")
+	entries, _ := os.ReadDir(imgDir)
+	if len(entries) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d 张图片", len(entries))
+}
+
+// ClearModuleData 清空某个模块的数据(单文件 = 删文件;目录 = removeAll + 重建空目录)。
+// 调用方需要保证相关 service 已停止/可容忍数据消失,否则可能再次写回。
+func ClearModuleData(key string) error {
+	dir := ToolforgeDir()
+	if dir == "" {
+		return fmt.Errorf("无法定位 home 目录")
+	}
+	stats, _ := CollectDataStats()
+	if stats == nil {
+		return fmt.Errorf("无法读取数据状态")
+	}
+	for _, m := range stats.Modules {
+		if m.Key != key {
+			continue
+		}
+		if !m.Exists {
+			return nil
+		}
+		if m.IsDir {
+			if err := os.RemoveAll(m.Path); err != nil {
+				return err
+			}
+			return os.MkdirAll(m.Path, 0o755)
+		}
+		return os.Remove(m.Path)
+	}
+	return fmt.Errorf("未知模块: %s", key)
 }
 
 // OpenDataDir 调系统资源管理器打开 ~/.toolforge

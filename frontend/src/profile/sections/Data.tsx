@@ -1,24 +1,28 @@
 import { useEffect, useState } from 'react'
 import {
   AlertTriangle,
+  Bot,
   ClipboardList,
   Download,
   ExternalLink,
+  FileJson,
   FolderOpen,
+  Globe,
   HardDrive,
   Keyboard,
-  Pin,
   RefreshCw,
   RotateCcw,
-  Star,
+  Sparkles,
   Trash2,
   Upload,
 } from 'lucide-react'
 import {
+  ClearAIDataModule,
   ExportData,
   GetDataStats,
   ImportData,
   OpenDataDir,
+  OpenInExplorer,
   ResetAllData,
 } from '../../../wailsjs/go/main/App'
 import type { system } from '../../../wailsjs/go/models'
@@ -30,6 +34,7 @@ import { useToolsStore } from '@/stores/tools'
 import { cn } from '@/lib/utils'
 
 type Stats = system.DataStats
+type Module = system.ModuleStorage
 
 const LS_PREFIX = 'tool-forge:'
 
@@ -72,6 +77,17 @@ function clearLocalStorage() {
   keys.forEach((k) => localStorage.removeItem(k))
 }
 
+const MODULE_META: Record<
+  string,
+  { icon: React.ReactNode; needRestart?: boolean; emptyHint?: string }
+> = {
+  'ai-chat': { icon: <Bot className="h-4 w-4" />, emptyHint: '没有 AI 会话' },
+  clipboard: { icon: <ClipboardList className="h-4 w-4" />, needRestart: true, emptyHint: '剪贴板未启用' },
+  'http-test': { icon: <Globe className="h-4 w-4" />, emptyHint: '没有 HTTP 历史' },
+  'provider-switch': { icon: <Sparkles className="h-4 w-4" />, emptyHint: '没有 Provider 配置' },
+  hotkeys: { icon: <Keyboard className="h-4 w-4" />, needRestart: true, emptyHint: '使用默认热键' },
+}
+
 export function DataSection() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [busy, setBusy] = useState(false)
@@ -106,6 +122,34 @@ export function DataSection() {
     if (err) alert(err)
   }
 
+  const onOpenPath = async (path: string) => {
+    try {
+      await OpenInExplorer(path)
+    } catch (e) {
+      alert('打开失败: ' + String(e))
+    }
+  }
+
+  const onClearModule = async (m: Module) => {
+    const meta = MODULE_META[m.key] ?? {}
+    const ok = await confirm({
+      title: `清空 ${m.label}`,
+      message: meta.needRestart
+        ? `将删除「${m.label}」的所有本地数据(${formatBytes(m.bytes)})。该模块涉及后台服务,清空后请重启 App 以避免数据被立刻再写回。`
+        : `将删除「${m.label}」的所有本地数据(${formatBytes(m.bytes)})。该操作不可恢复。`,
+      danger: true,
+      confirmLabel: '清空',
+    })
+    if (!ok) return
+    const err = (await ClearAIDataModule(m.key)) as unknown as string
+    if (err) {
+      alert('清空失败: ' + err)
+      return
+    }
+    flashMsg(`已清空 ${m.label}`)
+    refresh()
+  }
+
   const onExport = async () => {
     if (busy) return
     setBusy(true)
@@ -124,7 +168,8 @@ export function DataSection() {
   const onImport = async () => {
     const ok = await confirm({
       title: '导入备份',
-      message: '导入会覆盖当前所有本地数据(剪贴板历史 / 收藏 / 主题等)。导入完成后需要重启 App 才能生效。',
+      message:
+        '导入会覆盖当前所有本地数据(剪贴板历史 / AI 对话 / 收藏 / 主题等)。导入完成后需要重启 App 才能生效。',
       confirmLabel: '继续',
       cancelLabel: '取消',
       danger: true,
@@ -137,11 +182,7 @@ export function DataSection() {
         alert('导入失败: ' + err)
         return
       }
-      if (!ls) {
-        // 用户取消了选文件
-        return
-      }
-      // 把备份里的 localStorage 写回
+      if (!ls) return // 用户取消
       clearLocalStorage()
       applyLocalStorage(ls)
       await confirm({
@@ -186,7 +227,6 @@ export function DataSection() {
     })
     if (!ok) return
     resetOrder()
-    // 把每个 tool 的 visibility 也清掉(置为默认 true)
     for (const id of Object.keys(visibility)) {
       setVisibility(id, true)
     }
@@ -197,7 +237,7 @@ export function DataSection() {
     const ok = await confirm({
       title: '重置全部本地数据',
       message:
-        '将清空所有数据:剪贴板历史 / 收藏 / 主题 / 热键 / 工具偏好 / 昵称等等。此操作不可恢复,完成后需要重启 App。',
+        '将清空所有数据:剪贴板历史 / AI 对话 / 收藏 / 主题 / 热键 / 工具偏好 / 昵称等等。此操作不可恢复,完成后需要重启 App。',
       confirmLabel: '我已了解,重置',
       cancelLabel: '取消',
       danger: true,
@@ -223,7 +263,6 @@ export function DataSection() {
     }
   }
 
-  // —— 计算渲染用的小数字
   const pinnedCount = pinnedIds.length
   const recentCount = recentIds.length
   const totalLaunches = Object.values(recentCounts).reduce((a, b) => a + b, 0)
@@ -236,7 +275,7 @@ export function DataSection() {
         <div>
           <h1 className="text-xl font-semibold">数据</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            查看本地数据占用,导入 / 导出备份,或精细化清理。
+            查看本地数据占用,导入 / 导出备份,或按模块清理。
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={refresh} title="刷新概览">
@@ -251,73 +290,60 @@ export function DataSection() {
         </div>
       )}
 
-      {/* —— Block 1: 概览 —— */}
-      <section className="space-y-3">
-        <SectionTitle>数据概览</SectionTitle>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <StatCard
-            icon={<HardDrive className="h-4 w-4" />}
-            label="数据目录总占用"
-            value={stats ? formatBytes(stats.totalBytes) : '—'}
-            subtitle={stats ? `${stats.totalFiles} 个文件` : ''}
-          />
-          <StatCard
-            icon={<ClipboardList className="h-4 w-4" />}
-            label="剪贴板历史"
-            value={stats ? formatBytes(stats.clipboardSize) : '—'}
-            subtitle={stats ? `${stats.clipboardImgs} 张图片` : ''}
-          />
-          <StatCard
-            icon={<Pin className="h-4 w-4" />}
-            label="侧栏收藏"
-            value={`${pinnedCount} / 5`}
-          />
-          <StatCard
-            icon={<Star className="h-4 w-4" />}
-            label="最近使用"
-            value={`${recentCount} 项`}
-            subtitle={totalLaunches > 0 ? `累计打开 ${totalLaunches} 次` : ''}
-          />
-          <StatCard
-            icon={<Keyboard className="h-4 w-4" />}
-            label="自定义热键"
-            value={stats?.hasHotkeys ? '有' : '无'}
-          />
-          <StatCard
-            icon={<RefreshCw className="h-4 w-4" />}
-            label="工具偏好"
-            value={
-              hasOrder || customizedTools > 0
-                ? `已自定义`
-                : '默认'
-            }
-            subtitle={
-              hasOrder || customizedTools > 0
-                ? `顺序 ${hasOrder ? '已改' : '默认'} · 隐藏 ${customizedTools} 个`
-                : ''
-            }
-          />
+      {/* —— 1. 基础数据 —— */}
+      <Section title="基础数据">
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-info/15 text-info">
+              <HardDrive className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="text-sm font-medium">数据目录</div>
+                <div className="text-xs text-muted-foreground">
+                  {stats ? `${formatBytes(stats.totalBytes)} · ${stats.totalFiles} 个文件` : '—'}
+                </div>
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <code className="min-w-0 flex-1 truncate rounded bg-secondary/40 px-2 py-1 font-mono text-[11px] text-muted-foreground">
+                  {stats?.dataDir || '—'}
+                </code>
+                <Button size="sm" variant="ghost" onClick={onOpenDir} title="在资源管理器中打开">
+                  <FolderOpen className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-card/60 p-3 text-xs">
-          <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <span className="flex-1 truncate font-mono text-muted-foreground">
-            {stats?.dataDir || '—'}
-          </span>
-          <Button size="sm" variant="outline" onClick={onOpenDir}>
-            <ExternalLink className="h-3.5 w-3.5" />
-            打开
-          </Button>
-        </div>
-      </section>
+      </Section>
 
-      {/* —— Block 2: 导入 / 导出 —— */}
-      <section className="space-y-3">
-        <SectionTitle>导入 / 导出</SectionTitle>
+      {/* —— 2. 模块占用 —— */}
+      <Section title="模块占用" hint="每项独立可清理;清理某模块不影响其他">
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
+          {(stats?.modules ?? []).length === 0 ? (
+            <div className="px-4 py-8 text-center text-xs text-muted-foreground">没有数据</div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {(stats?.modules ?? []).map((m) => (
+                <ModuleRow
+                  key={m.key}
+                  m={m}
+                  onOpen={() => void onOpenPath(m.path)}
+                  onClear={() => void onClearModule(m)}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      </Section>
+
+      {/* —— 3. 备份还原 —— */}
+      <Section title="备份还原">
         <div className="rounded-lg border border-border bg-card p-4">
           <p className="mb-3 text-sm text-muted-foreground">
-            备份文件包含 <span className="font-mono">~/.toolforge/</span>{' '}
-            目录(剪贴板 / 热键)和浏览器 localStorage 里所有 <span className="font-mono">tool-forge:*</span>{' '}
-            条目。可用于跨机迁移或定期备份。
+            备份包含 <code className="rounded bg-secondary/40 px-1 font-mono text-[11px]">~/.toolforge/</code>{' '}
+            目录全部内容 + 浏览器 localStorage 中{' '}
+            <code className="rounded bg-secondary/40 px-1 font-mono text-[11px]">tool-forge:*</code> 条目。可用于跨机迁移或定期备份。
           </p>
           <div className="flex flex-wrap gap-2">
             <Button onClick={onExport} disabled={busy} variant="outline">
@@ -330,131 +356,174 @@ export function DataSection() {
             </Button>
           </div>
         </div>
-      </section>
+      </Section>
 
-      {/* —— Block 3: 危险区 —— */}
-      <section className="space-y-3">
-        <SectionTitle danger>危险区</SectionTitle>
+      {/* —— 4. 偏好清理(轻量) —— */}
+      <Section title="偏好清理" hint="只清理 UI 级偏好,不影响工具数据">
         <div className="space-y-2">
-          <DangerRow
+          <PrefRow
             label="清空侧栏收藏"
-            hint="清空 dock 上所有已固定的工具"
-            onClick={onResetPinned}
+            hint={`Dock 上 ${pinnedCount} / 5 个`}
             disabled={pinnedCount === 0}
+            onClick={onResetPinned}
           />
-          <DangerRow
+          <PrefRow
             label="清空最近使用"
-            hint="清空最近使用列表和频次计数"
-            onClick={onResetRecents}
+            hint={
+              recentCount > 0
+                ? `${recentCount} 项 · 累计打开 ${totalLaunches} 次`
+                : '尚无记录'
+            }
             disabled={recentCount === 0}
+            onClick={onResetRecents}
           />
-          <DangerRow
+          <PrefRow
             label="重置工具偏好"
-            hint="工具的可见性 / 排序恢复成默认"
-            onClick={onResetVisibility}
+            hint={
+              hasOrder || customizedTools > 0
+                ? `顺序 ${hasOrder ? '已改' : '默认'} · 隐藏 ${customizedTools} 个`
+                : '当前为默认'
+            }
             disabled={!hasOrder && customizedTools === 0}
-          />
-          <DangerRow
-            label="重置全部本地数据"
-            hint="清空所有 localStorage 和 ~/.toolforge 目录,需要重启 App"
-            onClick={onResetAll}
-            disabled={busy}
-            kind="extreme"
+            onClick={onResetVisibility}
           />
         </div>
-      </section>
+      </Section>
+
+      {/* —— 5. 危险区 —— */}
+      <Section title="危险区" danger>
+        <div className="flex items-center gap-3 rounded-lg border border-red-500/40 bg-red-500/5 p-4">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-red-700 dark:text-red-300">
+              重置全部本地数据
+            </div>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">
+              清空所有 localStorage 和 ~/.toolforge 目录,需要重启 App
+            </div>
+          </div>
+          <Button size="sm" variant="destructive" onClick={onResetAll} disabled={busy}>
+            <Trash2 className="h-3.5 w-3.5" />
+            重置
+          </Button>
+        </div>
+      </Section>
     </div>
   )
 }
 
-function SectionTitle({
-  children,
+function Section({
+  title,
+  hint,
   danger,
+  children,
 }: {
-  children: React.ReactNode
+  title: string
+  hint?: string
   danger?: boolean
+  children: React.ReactNode
 }) {
   return (
-    <div
-      className={cn(
-        'flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider',
-        danger ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'
-      )}
-    >
-      {danger && <AlertTriangle className="h-3 w-3" />}
-      {children}
-    </div>
-  )
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  subtitle,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  subtitle?: string
-}) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-3">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-info/20 to-info/10 text-info">
-          {icon}
-        </span>
-        {label}
+    <section className="space-y-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <div
+          className={cn(
+            'flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider',
+            danger ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground',
+          )}
+        >
+          {danger && <AlertTriangle className="h-3 w-3" />}
+          {title}
+        </div>
+        {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
       </div>
-      <div className="mt-1.5 text-xl font-semibold tracking-tight">{value}</div>
-      {subtitle && (
-        <div className="mt-0.5 text-[11px] text-muted-foreground">{subtitle}</div>
-      )}
-    </div>
+      {children}
+    </section>
   )
 }
 
-function DangerRow({
+function ModuleRow({
+  m,
+  onOpen,
+  onClear,
+}: {
+  m: Module
+  onOpen: () => void
+  onClear: () => void
+}) {
+  const meta = MODULE_META[m.key] ?? { icon: <FileJson className="h-4 w-4" /> }
+  const empty = !m.exists || m.bytes === 0
+  return (
+    <li className="flex items-center gap-3 px-4 py-3">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-info/15 text-info">
+        {meta.icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="truncate text-sm font-medium">{m.label}</span>
+          {m.subInfo && (
+            <span className="shrink-0 text-[11px] text-muted-foreground">{m.subInfo}</span>
+          )}
+        </div>
+        <code className="block truncate font-mono text-[11px] text-muted-foreground" title={m.path}>
+          {m.path}
+        </code>
+      </div>
+      <div className="shrink-0 text-right">
+        <div className="text-sm font-semibold tabular-nums">
+          {empty ? <span className="text-muted-foreground">—</span> : formatBytes(m.bytes)}
+        </div>
+        {!empty && m.isDir && (
+          <div className="text-[11px] text-muted-foreground">{m.files} 文件</div>
+        )}
+        {empty && (
+          <div className="text-[11px] text-muted-foreground">{meta.emptyHint ?? '空'}</div>
+        )}
+      </div>
+      <div className="ml-2 flex shrink-0 items-center gap-1">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onOpen}
+          title="在资源管理器中打开"
+          disabled={!m.exists}
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onClear}
+          title={m.exists ? '清空该模块数据' : '当前无数据'}
+          disabled={empty}
+          className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </li>
+  )
+}
+
+function PrefRow({
   label,
   hint,
   onClick,
   disabled,
-  kind,
 }: {
   label: string
   hint: string
   onClick: () => void
   disabled?: boolean
-  kind?: 'extreme'
 }) {
-  const extreme = kind === 'extreme'
   return (
-    <div
-      className={cn(
-        'flex items-center gap-3 rounded-lg border p-3',
-        extreme
-          ? 'border-red-500/40 bg-red-500/5'
-          : 'border-border bg-card'
-      )}
-    >
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
       <div className="min-w-0 flex-1">
-        <div className={cn('text-sm font-medium', extreme && 'text-red-700 dark:text-red-300')}>
-          {label}
-        </div>
+        <div className="text-sm font-medium">{label}</div>
         <div className="text-[11px] text-muted-foreground">{hint}</div>
       </div>
-      <Button
-        size="sm"
-        variant={extreme ? 'destructive' : 'outline'}
-        onClick={onClick}
-        disabled={disabled}
-      >
-        {extreme ? (
-          <Trash2 className="h-3.5 w-3.5" />
-        ) : (
-          <RotateCcw className="h-3.5 w-3.5" />
-        )}
-        {extreme ? '重置' : '清空'}
+      <Button size="sm" variant="outline" onClick={onClick} disabled={disabled}>
+        <RotateCcw className="h-3.5 w-3.5" />
+        清空
       </Button>
     </div>
   )

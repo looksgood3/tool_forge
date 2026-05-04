@@ -161,6 +161,27 @@ func (a *App) OpenDataDir() string {
 	return ""
 }
 
+// ClearAIDataModule 按 key 清空某个模块的数据(参见 system.DataStats.Modules)
+//
+//	注意:对应 service 仍在运行可能会立刻再写回,UI 提示需要重启 App 后再操作的模块
+func (a *App) ClearAIDataModule(key string) string {
+	// 先尝试停止与该 key 关联的 service,降低 race
+	switch key {
+	case "clipboard":
+		if a.clipboard != nil {
+			a.clipboard.Stop()
+		}
+	case "hotkeys":
+		if a.hotkey != nil {
+			a.hotkey.Stop()
+		}
+	}
+	if err := system.ClearModuleData(key); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
 // ExportData 把数据目录 + 前端传来的 localStorage 一起打 zip,
 // localStorageJSON 是前端 stringify 后的 JSON 字符串。返回保存路径(空 = 用户取消)
 func (a *App) ExportData(localStorageJSON string) (string, string) {
