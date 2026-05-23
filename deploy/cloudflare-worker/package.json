@@ -1,0 +1,13 @@
+{
+  "name": "tool-forge-update-worker",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Cloudflare Worker that exposes GitHub Release info as Tool Forge update manifest",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.86.0"
+  }
+}

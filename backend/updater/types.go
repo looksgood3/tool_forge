@@ -1,8 +1,16 @@
 // Package updater 负责 Tool Forge 的更新检查、下载、自搬家。
 package updater
 
-// ManifestURL 指向 Hub 上托管的 Tool Forge manifest
-const ManifestURL = "https://hub.jntml.me/api/public/apps/tool-forge/manifest.json"
+// ManifestURL 指向托管 Tool Forge manifest 的服务。
+//
+// 当前方案:Cloudflare Worker(代码见 deploy/cloudflare-worker/),
+// 它读 GitHub Release "latest" 并转成本结构体期望的 JSON。
+// 发新版只需在 GitHub 发 Release,Worker 自动暴露给客户端,无需任何服务器维护。
+//
+// 部署完成后把下方 URL 改成 wrangler deploy 输出的实际地址,
+// 形如 https://tool-forge-update.<你的 CF 账号子域>.workers.dev/manifest.json
+// 部署步骤见 deploy/cloudflare-worker/README.md
+const ManifestURL = "https://tool-forge-update.xiaoxu123195.workers.dev/manifest.json"
 
 // DownloadPrefix 下载到 Downloads 时用的文件名前缀；自搬家判断也看这个
 const DownloadPrefix = "ToolForge-v"

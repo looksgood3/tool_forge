@@ -1,0 +1,11 @@
+name = "tool-forge-update"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# 可选:配置 GitHub Token 把 API 限流从 60/h 拉到 5000/h
+# 部署后用 `wrangler secret put GITHUB_TOKEN` 设置(不要写在这里)
+
+# 可选:自定义域名(需要在 CF 已托管该域名)
+# routes = [
+#   { pattern = "update.example.com/*", custom_domain = true }
+# ]
