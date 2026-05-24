@@ -3,8 +3,13 @@
 
 import type {
   AccountPatch,
+  AccountSecret,
   AccountView,
+  AuthURLResult,
   Config,
+  ExchangeResult,
+  ExportResult,
+  ExportSummary,
   ExtractResult,
   Folder,
   Group,
@@ -12,7 +17,9 @@ import type {
   ImportResponse,
   MailDetail,
   MailPage,
+  RefreshJobState,
   RefreshResult,
+  SaveFromAuthRequest,
 } from './types'
 
 interface AppRPC {
@@ -36,6 +43,24 @@ interface AppRPC {
 
   GetOutlookConfig(): Promise<Config>
   UpdateOutlookConfig(cfg: Config): Promise<string>
+
+  GetOutlookAccountSecret(id: string): Promise<[AccountSecret | null, string]>
+  SetOutlookRefreshToken(id: string, newRT: string): Promise<string>
+
+  BuildOutlookAuthURL(clientID: string, redirectURI: string): Promise<AuthURLResult>
+  ExchangeOutlookCode(redirectedURL: string, clientID: string, redirectURI: string): Promise<[ExchangeResult | null, string]>
+  SaveOutlookFromAuth(req: SaveFromAuthRequest): Promise<[AccountView | null, string]>
+
+  PreviewOutlookExport(): Promise<ExportSummary[] | null>
+  ExportOutlookAccounts(groupIDs: string[]): Promise<[ExportResult | null, string]>
+  PickOutlookExportPath(defaultFilename: string): Promise<string>
+  WriteOutlookExportFile(path: string, content: string): Promise<string>
+
+  StartOutlookRefreshJob(ids: string[]): Promise<string>
+  CancelOutlookRefreshJob(jobID: string): Promise<void>
+  GetOutlookRefreshJob(jobID: string): Promise<RefreshJobState | null>
+  ListOutlookActiveRefreshJobs(): Promise<RefreshJobState[] | null>
+  ListOutlookRefreshHistory(): Promise<RefreshJobState[] | null>
 }
 
 function app(): AppRPC {
@@ -104,4 +129,25 @@ export const outlookAPI = {
 
   getConfig: () => app().GetOutlookConfig(),
   updateConfig: (cfg: Config) => unwrapErr(app().UpdateOutlookConfig(cfg)),
+
+  getAccountSecret: (id: string) => unwrap(app().GetOutlookAccountSecret(id)),
+  setRefreshToken: (id: string, rt: string) => unwrapErr(app().SetOutlookRefreshToken(id, rt)),
+
+  buildAuthURL: (clientID = '', redirectURI = '') =>
+    app().BuildOutlookAuthURL(clientID, redirectURI),
+  exchangeCode: (redirectedURL: string, clientID = '', redirectURI = '') =>
+    unwrap(app().ExchangeOutlookCode(redirectedURL, clientID, redirectURI)),
+  saveFromAuth: (req: SaveFromAuthRequest) => unwrap(app().SaveOutlookFromAuth(req)),
+
+  previewExport: () => app().PreviewOutlookExport().then((s) => s ?? []),
+  exportAccounts: (groupIDs: string[]) => unwrap(app().ExportOutlookAccounts(groupIDs)),
+  pickExportPath: (defaultFilename = '') => app().PickOutlookExportPath(defaultFilename),
+  writeExportFile: (path: string, content: string) =>
+    unwrapErr(app().WriteOutlookExportFile(path, content)),
+
+  startRefreshJob: (ids: string[]) => app().StartOutlookRefreshJob(ids),
+  cancelRefreshJob: (jobID: string) => app().CancelOutlookRefreshJob(jobID),
+  getRefreshJob: (jobID: string) => app().GetOutlookRefreshJob(jobID),
+  listActiveRefreshJobs: () => app().ListOutlookActiveRefreshJobs().then((r) => r ?? []),
+  listRefreshHistory: () => app().ListOutlookRefreshHistory().then((r) => r ?? []),
 }

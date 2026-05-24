@@ -18,6 +18,8 @@ export interface AccountView {
   last_error?: string
   has_proxy: boolean
   proxy?: string
+  disabled: boolean
+  order: number
   last_refresh_at?: string
   last_used_at?: string
   created_at: string
@@ -25,11 +27,74 @@ export interface AccountView {
 }
 
 export interface AccountPatch {
+  email?: string
+  password?: string
+  client_id?: string
   group_id?: string
   tags?: string[]
   remark?: string
   proxy?: string
   status?: AccountStatus
+  disabled?: boolean
+  order?: number
+}
+
+export interface AccountSecret {
+  id: string
+  email: string
+  password: string
+  client_id: string
+  refresh_token: string
+}
+
+export interface AuthURLResult {
+  auth_url: string
+  client_id: string
+  redirect_uri: string
+}
+
+export interface ExchangeResult {
+  client_id: string
+  refresh_token: string
+  access_token: string
+  expires_in: number
+  scope: string
+  email?: string
+}
+
+export interface SaveFromAuthRequest {
+  redirected_url: string
+  client_id?: string
+  redirect_uri?: string
+  email?: string
+  password?: string
+  group_id?: string
+  tags?: string[]
+  remark?: string
+}
+
+export interface ExportSummary {
+  group_id: string
+  group_name: string
+  count: number
+}
+
+export interface ExportResult {
+  content: string
+  total_count: number
+  exported_groups: string[]
+}
+
+export interface RefreshJobState {
+  job_id: string
+  start_at: string
+  end_at?: string
+  total: number
+  done: number
+  success: number
+  failed: number
+  canceled: boolean
+  results: RefreshResult[]
 }
 
 export interface Group {

@@ -364,6 +364,8 @@ func accountToView(a *Account) AccountView {
 		LastError:     a.LastError,
 		HasProxy:      a.Proxy != "",
 		Proxy:         a.Proxy,
+		Disabled:      a.Disabled,
+		Order:         a.Order,
 		LastRefreshAt: a.LastRefreshAt,
 		LastUsedAt:    a.LastUsedAt,
 		CreatedAt:     a.CreatedAt,

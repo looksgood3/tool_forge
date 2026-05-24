@@ -1332,3 +1332,148 @@ func (a *App) UpdateOutlookConfig(cfg outlookmail.Config) string {
 	}
 	return ""
 }
+
+// ================ Outlook 邮箱管理 - 扩展 RPC ================
+
+// GetOutlookAccountSecret 拿单账号的 refresh_token + password 明文(给编辑弹窗用)
+func (a *App) GetOutlookAccountSecret(id string) (*outlookmail.AccountSecret, string) {
+	if a.outlook == nil {
+		return nil, "Outlook 服务未初始化"
+	}
+	sec, err := a.outlook.GetAccountSecret(id)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return sec, ""
+}
+
+// SetOutlookRefreshToken 更新 refresh_token(走加密)
+func (a *App) SetOutlookRefreshToken(id, newRT string) string {
+	if a.outlook == nil {
+		return "Outlook 服务未初始化"
+	}
+	if err := a.outlook.SetRefreshToken(id, newRT); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// BuildOutlookAuthURL 生成微软 OAuth 授权链接(common 多租户)
+func (a *App) BuildOutlookAuthURL(clientID, redirectURI string) outlookmail.AuthURLResult {
+	if a.outlook == nil {
+		return outlookmail.AuthURLResult{}
+	}
+	return a.outlook.BuildAuthURL(clientID, redirectURI)
+}
+
+// ExchangeOutlookCode 用授权回调 URL 换 refresh_token(预览,不落库)
+func (a *App) ExchangeOutlookCode(redirectedURL, clientID, redirectURI string) (*outlookmail.ExchangeResult, string) {
+	if a.outlook == nil {
+		return nil, "Outlook 服务未初始化"
+	}
+	res, err := a.outlook.ExchangeCode(a.ctx, redirectedURL, clientID, redirectURI)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return res, ""
+}
+
+// SaveOutlookFromAuth 授权 → 换 token → 落库
+func (a *App) SaveOutlookFromAuth(req outlookmail.SaveFromAuthRequest) (*outlookmail.AccountView, string) {
+	if a.outlook == nil {
+		return nil, "Outlook 服务未初始化"
+	}
+	v, err := a.outlook.SaveFromAuth(a.ctx, req)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return v, ""
+}
+
+// PreviewOutlookExport 列分组及账号数(导出弹窗用)
+func (a *App) PreviewOutlookExport() []outlookmail.ExportSummary {
+	if a.outlook == nil {
+		return nil
+	}
+	return a.outlook.ExportPreview()
+}
+
+// ExportOutlookAccounts 组装导出文本;前端拿到 content 后走 PickSaveFile 落盘
+func (a *App) ExportOutlookAccounts(groupIDs []string) (*outlookmail.ExportResult, string) {
+	if a.outlook == nil {
+		return nil, "Outlook 服务未初始化"
+	}
+	r, err := a.outlook.ExportAccounts(groupIDs)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return r, ""
+}
+
+// PickOutlookExportPath 弹保存对话框,让用户选 .txt 输出位置
+func (a *App) PickOutlookExportPath(defaultFilename string) (string, error) {
+	if defaultFilename == "" {
+		defaultFilename = "outlook-accounts.txt"
+	}
+	return system.PickSaveFile(a.ctx, system.PickFileOptions{
+		Title:           "导出邮箱账号到 TXT",
+		Extensions:      []string{".txt"},
+		DisplayName:     "文本文件",
+		DefaultFilename: defaultFilename,
+	})
+}
+
+// WriteOutlookExportFile 把导出文本写到用户选定的路径(UTF-8 无 BOM)
+func (a *App) WriteOutlookExportFile(path, content string) string {
+	if path == "" {
+		return "未指定保存路径"
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// ================ Outlook 邮箱管理 - Token 刷新 Job ================
+
+// StartOutlookRefreshJob 启动一次批量刷新(异步),返回 jobID
+//
+// ids 为空 = 所有账号(自动跳过 disabled);前端通过事件订阅进度。
+func (a *App) StartOutlookRefreshJob(ids []string) string {
+	if a.outlook == nil {
+		return ""
+	}
+	return a.outlook.Jobs().Start(ids)
+}
+
+// CancelOutlookRefreshJob 取消进行中的任务
+func (a *App) CancelOutlookRefreshJob(jobID string) {
+	if a.outlook == nil {
+		return
+	}
+	a.outlook.Jobs().Cancel(jobID)
+}
+
+// GetOutlookRefreshJob 查任务状态(进行中 or 历史)
+func (a *App) GetOutlookRefreshJob(jobID string) *outlookmail.RefreshJobState {
+	if a.outlook == nil {
+		return nil
+	}
+	return a.outlook.Jobs().GetJob(jobID)
+}
+
+// ListOutlookActiveRefreshJobs 列进行中的任务
+func (a *App) ListOutlookActiveRefreshJobs() []outlookmail.RefreshJobState {
+	if a.outlook == nil {
+		return nil
+	}
+	return a.outlook.Jobs().ListActive()
+}
+
+// ListOutlookRefreshHistory 列最近完成 / 取消的任务
+func (a *App) ListOutlookRefreshHistory() []outlookmail.RefreshJobState {
+	if a.outlook == nil {
+		return nil
+	}
+	return a.outlook.Jobs().History()
+}

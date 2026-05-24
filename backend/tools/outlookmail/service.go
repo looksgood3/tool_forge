@@ -13,6 +13,7 @@ type Service struct {
 	store     *Store
 	httpc     *httpClientCache
 	scheduler *scheduler
+	jobs      *RefreshJobManager
 }
 
 // New 初始化 Service。Storage 出错就返回错误(主密钥拿不到等)。
@@ -26,13 +27,18 @@ func New() (*Service, error) {
 		httpc: newHTTPClientCache(),
 	}
 	s.scheduler = newScheduler(s)
+	s.jobs = NewRefreshJobManager(s)
 	return s, nil
 }
 
-// Start 启动后台 worker(定时刷新)
+// Start 启动后台 worker(定时刷新)+ 注入 wails ctx 给 job manager
 func (s *Service) Start(ctx context.Context) {
+	s.jobs.SetContext(ctx)
 	s.scheduler.Start(ctx)
 }
+
+// Jobs 暴露给 RPC 层调用
+func (s *Service) Jobs() *RefreshJobManager { return s.jobs }
 
 // Stop 关闭后台 worker
 func (s *Service) Stop() {
@@ -90,9 +96,29 @@ func (s *Service) DeleteAccount(id string) error {
 	return s.store.DeleteAccount(id)
 }
 
-// UpdateAccount 修改账号字段(标签 / 备注 / 代理 / 状态 / 分组)
+// UpdateAccount 修改账号字段(全字段可改);refresh_token 走单独的 UpdateRefreshToken。
+//
+// 修改 email 时会检查重复;为空保持不变。
 func (s *Service) UpdateAccount(id string, patch AccountPatch) (*AccountView, error) {
+	// email 重复检查(改 email 时需要)
+	if patch.Email != nil && *patch.Email != "" {
+		newEmail := *patch.Email
+		for _, exist := range s.store.AllAccounts() {
+			if exist.ID != id && exist.Email == newEmail {
+				return nil, fmt.Errorf("邮箱已存在: %s", newEmail)
+			}
+		}
+	}
 	a, err := s.store.UpdateAccount(id, func(a *Account) {
+		if patch.Email != nil && *patch.Email != "" {
+			a.Email = *patch.Email
+		}
+		if patch.Password != nil {
+			a.Password = *patch.Password
+		}
+		if patch.ClientID != nil && *patch.ClientID != "" {
+			a.ClientID = *patch.ClientID
+		}
 		if patch.GroupID != nil {
 			a.GroupID = *patch.GroupID
 		}
@@ -108,6 +134,12 @@ func (s *Service) UpdateAccount(id string, patch AccountPatch) (*AccountView, er
 		if patch.Status != nil {
 			a.Status = *patch.Status
 		}
+		if patch.Disabled != nil {
+			a.Disabled = *patch.Disabled
+		}
+		if patch.Order != nil {
+			a.Order = *patch.Order
+		}
 	})
 	if err != nil {
 		return nil, err
@@ -118,11 +150,44 @@ func (s *Service) UpdateAccount(id string, patch AccountPatch) (*AccountView, er
 
 // AccountPatch 部分更新(用指针区分"未传"和"清空")
 type AccountPatch struct {
-	GroupID *string        `json:"group_id,omitempty"`
-	Tags    *[]string      `json:"tags,omitempty"`
-	Remark  *string        `json:"remark,omitempty"`
-	Proxy   *string        `json:"proxy,omitempty"`
-	Status  *AccountStatus `json:"status,omitempty"`
+	Email    *string        `json:"email,omitempty"`
+	Password *string        `json:"password,omitempty"`
+	ClientID *string        `json:"client_id,omitempty"`
+	GroupID  *string        `json:"group_id,omitempty"`
+	Tags     *[]string      `json:"tags,omitempty"`
+	Remark   *string        `json:"remark,omitempty"`
+	Proxy    *string        `json:"proxy,omitempty"`
+	Status   *AccountStatus `json:"status,omitempty"`
+	Disabled *bool          `json:"disabled,omitempty"`
+	Order    *int           `json:"order,omitempty"`
+}
+
+// GetAccountSecret 解密返回敏感字段(给编辑账号弹窗用)。
+// 调用方应在拿到后立即放入临时表单状态,不要长期持有/打 log。
+func (s *Service) GetAccountSecret(id string) (*AccountSecret, error) {
+	acc, err := s.store.GetAccount(id)
+	if err != nil {
+		return nil, err
+	}
+	rt, err := s.store.DecryptRT(id)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountSecret{
+		ID:           acc.ID,
+		Email:        acc.Email,
+		Password:     acc.Password,
+		ClientID:     acc.ClientID,
+		RefreshToken: rt,
+	}, nil
+}
+
+// SetRefreshToken 重新写入 refresh_token(走加密)
+func (s *Service) SetRefreshToken(id, newRT string) error {
+	if newRT == "" {
+		return errors.New("refresh_token 不能为空")
+	}
+	return s.store.UpdateRefreshToken(id, newRT)
 }
 
 // ----------------- 导入 -----------------
@@ -281,10 +346,13 @@ func (s *Service) RefreshOne(ctx context.Context, accountID string) RefreshResul
 	}
 }
 
-// RefreshMany 批量刷新;ids 为空时刷全部
+// RefreshMany 批量刷新;ids 为空时刷全部(自动跳过 Disabled 账号)
 func (s *Service) RefreshMany(ctx context.Context, ids []string) []RefreshResult {
 	if len(ids) == 0 {
 		for _, a := range s.store.AllAccounts() {
+			if a.Disabled {
+				continue
+			}
 			ids = append(ids, a.ID)
 		}
 	}

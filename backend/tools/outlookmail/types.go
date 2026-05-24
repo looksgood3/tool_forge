@@ -50,6 +50,9 @@ type Account struct {
 	LastError string        `json:"last_error,omitempty"` // 最近一次失败原因
 	Proxy     string        `json:"proxy,omitempty"`      // 账号级代理,覆盖全局
 
+	Disabled bool `json:"disabled,omitempty"` // 停用:不参与批量刷新 / UI 灰显
+	Order    int  `json:"order,omitempty"`    // 用户自定义排序值;升序在前
+
 	LastRefreshAt *time.Time `json:"last_refresh_at,omitempty"`
 	LastUsedAt    *time.Time `json:"last_used_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
@@ -70,10 +73,21 @@ type AccountView struct {
 	LastError     string        `json:"last_error,omitempty"`
 	HasProxy      bool          `json:"has_proxy"`
 	Proxy         string        `json:"proxy,omitempty"`
+	Disabled      bool          `json:"disabled"`
+	Order         int           `json:"order"`
 	LastRefreshAt *time.Time    `json:"last_refresh_at,omitempty"`
 	LastUsedAt    *time.Time    `json:"last_used_at,omitempty"`
 	CreatedAt     time.Time     `json:"created_at"`
 	UpdatedAt     time.Time     `json:"updated_at"`
+}
+
+// AccountSecret 给前端编辑账号弹窗用的解密视图(包含 refresh_token / password 明文)
+type AccountSecret struct {
+	ID           string `json:"id"`
+	Email        string `json:"email"`
+	Password     string `json:"password"`
+	ClientID     string `json:"client_id"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 // Group 账号分组(用户自定义)

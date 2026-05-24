@@ -7,6 +7,10 @@ import { outlookAPI } from './api'
 import { GroupPanel } from './GroupPanel'
 import { AccountPanel } from './AccountPanel'
 import { ImportDialog } from './ImportDialog'
+import { AuthSaveDialog } from './AuthSaveDialog'
+import { EditAccountDialog } from './EditAccountDialog'
+import { ExportDialog } from './ExportDialog'
+import { RefreshManagerDialog } from './RefreshManagerDialog'
 import { MailList } from './MailList'
 import { MailDetail } from './MailDetail'
 import { SettingsDialog } from './SettingsDialog'
@@ -22,7 +26,11 @@ export default function OutlookMailTool() {
   const [selectedIDs, setSelectedIDs] = useState<Set<string>>(new Set())
   const [refreshingIDs, setRefreshingIDs] = useState<Set<string>>(new Set())
   const [showImport, setShowImport] = useState(false)
+  const [showAuthSave, setShowAuthSave] = useState(false)
+  const [showExport, setShowExport] = useState(false)
+  const [showRefresh, setShowRefresh] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [editTarget, setEditTarget] = useState<AccountView | null>(null)
   const [mailReloadToken, setMailReloadToken] = useState(0)
 
   const reloadGroups = useCallback(async () => {
@@ -58,7 +66,7 @@ export default function OutlookMailTool() {
     [filteredAccounts, selectedAccountID],
   )
 
-  // 当切换账号时,清空已选邮件
+  // 当切换账号 / 文件夹时清空已选邮件
   useEffect(() => {
     setSelectedMail(null)
   }, [selectedAccountID, folder])
@@ -72,15 +80,6 @@ export default function OutlookMailTool() {
     })
   }
 
-  const refreshAll = async () => {
-    const ids = accounts.map((a) => a.id)
-    await runRefresh(ids)
-  }
-
-  const refreshSelected = async () => {
-    await runRefresh(Array.from(selectedIDs))
-  }
-
   const runRefresh = async (ids: string[]) => {
     if (ids.length === 0) return
     setRefreshingIDs(new Set(ids))
@@ -90,6 +89,15 @@ export default function OutlookMailTool() {
       setRefreshingIDs(new Set())
       await reloadAccounts()
     }
+  }
+
+  const refreshAll = async () => {
+    const ids = accounts.filter((a) => !a.disabled).map((a) => a.id)
+    await runRefresh(ids)
+  }
+
+  const refreshSelected = async () => {
+    await runRefresh(Array.from(selectedIDs))
   }
 
   return (
@@ -128,9 +136,13 @@ export default function OutlookMailTool() {
           onToggleSelect={toggleSelect}
           onClearSelection={() => setSelectedIDs(new Set())}
           onOpenImport={() => setShowImport(true)}
-          onRefresh={refreshAll}
+          onOpenAuthSave={() => setShowAuthSave(true)}
+          onOpenExport={() => setShowExport(true)}
+          onOpenRefreshManager={() => setShowRefresh(true)}
+          onEditAccount={setEditTarget}
+          onRefreshAll={refreshAll}
           onRefreshSelected={refreshSelected}
-          onAfterDelete={reloadAccounts}
+          onAfterChange={reloadAccounts}
         />
         <MailList
           accountID={selectedAccountID}
@@ -154,6 +166,38 @@ export default function OutlookMailTool() {
           defaultGroupID={selectedGroupID || 'default'}
           onClose={() => setShowImport(false)}
           onImported={() => {
+            void reloadAccounts()
+          }}
+        />
+      )}
+      {showAuthSave && (
+        <AuthSaveDialog
+          groups={groups}
+          defaultGroupID={selectedGroupID || 'default'}
+          onClose={() => setShowAuthSave(false)}
+          onSaved={() => {
+            void reloadAccounts()
+          }}
+        />
+      )}
+      {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
+      {showRefresh && (
+        <RefreshManagerDialog
+          totalAccounts={accounts.length}
+          onClose={() => setShowRefresh(false)}
+          onAfterRefresh={reloadAccounts}
+        />
+      )}
+      {editTarget && (
+        <EditAccountDialog
+          account={editTarget}
+          groups={groups}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => {
+            void reloadAccounts()
+          }}
+          onDeleted={() => {
+            if (selectedAccountID === editTarget.id) setSelectedAccountID('')
             void reloadAccounts()
           }}
         />
