@@ -8,7 +8,7 @@ export const meta: ToolMeta = {
   sidebarTitle: '凭据转换',
   description: '把 chatgpt.com/api/auth/session 的 JSON 转成 auth.json / CPA / Sub2API / Cockpit / 9router / AxonHub 等多种格式',
   icon: KeyRound,
-  category: 'ai',
+  category: 'account',
   order: 18,
   defaultVisible: true,
 }

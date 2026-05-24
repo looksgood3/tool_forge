@@ -23,6 +23,7 @@ import (
 	"tool_forge/backend/tools/forensic"
 	"tool_forge/backend/tools/httptest"
 	"tool_forge/backend/tools/netscan"
+	"tool_forge/backend/tools/outlookmail"
 	"tool_forge/backend/tools/providerswitch"
 	"tool_forge/backend/updater"
 )
@@ -50,6 +51,7 @@ type App struct {
 	provider  *providerswitch.Service
 	aichat    *aichat.Service
 	api       *apiserver.Server
+	outlook   *outlookmail.Service
 }
 
 // NewApp creates a new App application struct
@@ -81,6 +83,8 @@ func NewApp() *App {
 	api := apiserver.New()
 	api.Register(appsearch.NewHandler(apsearch))
 	api.Register(forensic.NewStreamHandler(fns))
+	// Outlook 邮箱管理:加密存储 + 定时刷新 worker
+	outlk, _ := outlookmail.New()
 	return &App{
 		forensic:  fns,
 		appsearch: apsearch,
@@ -90,6 +94,7 @@ func NewApp() *App {
 		provider:  prov,
 		aichat:    aic,
 		api:       api,
+		outlook:   outlk,
 	}
 }
 
@@ -118,6 +123,10 @@ func (a *App) startup(ctx context.Context) {
 			}
 		}
 	}
+	// Outlook 定时刷新 worker
+	if a.outlook != nil {
+		a.outlook.Start(ctx)
+	}
 }
 
 // shutdown 在 Wails 关闭前调用,释放剪贴板监听等
@@ -130,6 +139,9 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	if a.api != nil {
 		_ = a.api.Shutdown()
+	}
+	if a.outlook != nil {
+		a.outlook.Stop()
 	}
 }
 
@@ -1155,6 +1167,168 @@ func (a *App) StopAIChat(convID string) string {
 	}
 	if !a.aichat.CancelStream(convID) {
 		return "该会话没有进行中的请求"
+	}
+	return ""
+}
+
+// ================ Outlook 邮箱管理 ================
+
+// ListOutlookGroups 列分组
+func (a *App) ListOutlookGroups() []outlookmail.Group {
+	if a.outlook == nil {
+		return nil
+	}
+	return a.outlook.ListGroups()
+}
+
+// AddOutlookGroup 新建分组
+func (a *App) AddOutlookGroup(name, color string) (*outlookmail.Group, string) {
+	if a.outlook == nil {
+		return nil, "Outlook 服务未初始化"
+	}
+	g, err := a.outlook.AddGroup(name, color)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return g, ""
+}
+
+// RenameOutlookGroup 重命名分组
+func (a *App) RenameOutlookGroup(id, name string) string {
+	if a.outlook == nil {
+		return "Outlook 服务未初始化"
+	}
+	if err := a.outlook.RenameGroup(id, name); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// DeleteOutlookGroup 删除分组(默认分组不可删)
+func (a *App) DeleteOutlookGroup(id string) string {
+	if a.outlook == nil {
+		return "Outlook 服务未初始化"
+	}
+	if err := a.outlook.DeleteGroup(id); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// ListOutlookAccounts groupID 为空 = 所有分组
+func (a *App) ListOutlookAccounts(groupID string) []outlookmail.AccountView {
+	if a.outlook == nil {
+		return nil
+	}
+	return a.outlook.ListAccounts(groupID)
+}
+
+// ImportOutlookAccounts 批量导入
+func (a *App) ImportOutlookAccounts(req outlookmail.ImportRequest) outlookmail.ImportResponse {
+	if a.outlook == nil {
+		return outlookmail.ImportResponse{}
+	}
+	return a.outlook.Import(req)
+}
+
+// UpdateOutlookAccount 部分更新账号字段
+func (a *App) UpdateOutlookAccount(id string, patch outlookmail.AccountPatch) (*outlookmail.AccountView, string) {
+	if a.outlook == nil {
+		return nil, "Outlook 服务未初始化"
+	}
+	v, err := a.outlook.UpdateAccount(id, patch)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return v, ""
+}
+
+// DeleteOutlookAccount 删除单个账号
+func (a *App) DeleteOutlookAccount(id string) string {
+	if a.outlook == nil {
+		return "Outlook 服务未初始化"
+	}
+	if err := a.outlook.DeleteAccount(id); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// RefreshOutlookToken 刷新单账号 Token
+func (a *App) RefreshOutlookToken(id string) outlookmail.RefreshResult {
+	if a.outlook == nil {
+		return outlookmail.RefreshResult{AccountID: id, Success: false, Reason: "Outlook 服务未初始化"}
+	}
+	return a.outlook.RefreshOne(a.ctx, id)
+}
+
+// RefreshOutlookTokens 批量刷新;ids 为空 = 全部
+func (a *App) RefreshOutlookTokens(ids []string) []outlookmail.RefreshResult {
+	if a.outlook == nil {
+		return nil
+	}
+	return a.outlook.RefreshMany(a.ctx, ids)
+}
+
+// ListOutlookMails 列邮件
+func (a *App) ListOutlookMails(accountID string, folder string, page, pageSize int) (*outlookmail.MailPage, string) {
+	if a.outlook == nil {
+		return nil, "Outlook 服务未初始化"
+	}
+	mp, err := a.outlook.ListMails(a.ctx, accountID, outlookmail.Folder(folder), page, pageSize)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return mp, ""
+}
+
+// GetOutlookMail 取邮件详情
+func (a *App) GetOutlookMail(accountID, folder, messageID string) (*outlookmail.MailDetail, string) {
+	if a.outlook == nil {
+		return nil, "Outlook 服务未初始化"
+	}
+	d, err := a.outlook.GetMail(a.ctx, accountID, outlookmail.Folder(folder), messageID)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return d, ""
+}
+
+// ExtractOutlookMail 从某封邮件提取验证码 / 链接
+func (a *App) ExtractOutlookMail(accountID, folder, messageID string) (*outlookmail.ExtractResult, string) {
+	if a.outlook == nil {
+		return nil, "Outlook 服务未初始化"
+	}
+	r, err := a.outlook.Extract(a.ctx, accountID, outlookmail.Folder(folder), messageID)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return r, ""
+}
+
+// ExtractOutlookText 从一段文本提取验证码 / 链接(用户粘贴场景)
+func (a *App) ExtractOutlookText(text string) *outlookmail.ExtractResult {
+	if a.outlook == nil {
+		return nil
+	}
+	return a.outlook.ExtractFromText(text)
+}
+
+// GetOutlookConfig 拿全局配置(代理 / 定时刷新)
+func (a *App) GetOutlookConfig() outlookmail.Config {
+	if a.outlook == nil {
+		return outlookmail.DefaultConfig()
+	}
+	return a.outlook.GetConfig()
+}
+
+// UpdateOutlookConfig 保存配置并触发 scheduler 重载
+func (a *App) UpdateOutlookConfig(cfg outlookmail.Config) string {
+	if a.outlook == nil {
+		return "Outlook 服务未初始化"
+	}
+	if err := a.outlook.UpdateConfig(cfg); err != nil {
+		return err.Error()
 	}
 	return ""
 }

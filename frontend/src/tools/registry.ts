@@ -91,6 +91,9 @@ import { meta as translateMeta } from './translate/meta'
 import ChatGPTAuth from './chatgpt-auth'
 import { meta as chatgptAuthMeta } from './chatgpt-auth/meta'
 
+import OutlookMail from './outlook-mail'
+import { meta as outlookMailMeta } from './outlook-mail/meta'
+
 import Regex from './regex'
 import { meta as regexMeta } from './regex/meta'
 
@@ -153,6 +156,7 @@ export const tools: ToolEntry[] = [
   { meta: aiChatMeta, Component: AIChat },
   { meta: translateMeta, Component: Translate },
   { meta: chatgptAuthMeta, Component: ChatGPTAuth },
+  { meta: outlookMailMeta, Component: OutlookMail },
   { meta: httpTestMeta, Component: HttpTest },
   { meta: netToolsMeta, Component: NetTools },
 ]

@@ -23,6 +23,7 @@ const CATEGORY_ORDER: ToolCategory[] = [
   'forensic',
   'data',
   'ai',
+  'account',
   'codec',
   'crypto',
   'time',

@@ -26,6 +26,7 @@ const CATEGORY_ACCENT: Record<ToolCategory, string> = {
   forensic: 'bg-red-500',
   data: 'bg-blue-500',
   ai: 'bg-cyan-500',
+  account: 'bg-violet-500',
   codec: 'bg-sky-500',
   crypto: 'bg-rose-500',
   time: 'bg-amber-500',

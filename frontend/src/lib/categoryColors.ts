@@ -8,6 +8,7 @@ export const THEMED_CATEGORY_COLORS: Record<ToolCategory, string> = {
   forensic: 'bg-gradient-to-br from-red-500/20 to-red-600/10 text-red-600 dark:from-red-500/25 dark:to-red-600/10 dark:text-red-300',
   data: 'bg-gradient-to-br from-blue-500/20 to-blue-600/10 text-blue-600 dark:from-blue-500/25 dark:to-blue-600/10 dark:text-blue-300',
   ai: 'bg-gradient-to-br from-cyan-500/20 to-cyan-600/10 text-cyan-600 dark:from-cyan-500/25 dark:to-cyan-600/10 dark:text-cyan-300',
+  account: 'bg-gradient-to-br from-violet-500/20 to-violet-600/10 text-violet-600 dark:from-violet-500/25 dark:to-violet-600/10 dark:text-violet-300',
   codec: 'bg-gradient-to-br from-sky-500/20 to-sky-600/10 text-sky-600 dark:from-sky-500/25 dark:to-sky-600/10 dark:text-sky-300',
   crypto: 'bg-gradient-to-br from-rose-500/20 to-rose-600/10 text-rose-600 dark:from-rose-500/25 dark:to-rose-600/10 dark:text-rose-300',
   time: 'bg-gradient-to-br from-amber-500/20 to-amber-600/10 text-amber-600 dark:from-amber-500/25 dark:to-amber-600/10 dark:text-amber-300',
