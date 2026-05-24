@@ -10,6 +10,7 @@ import (
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"tool_forge/backend/apiserver"
 	"tool_forge/backend/system"
 	"tool_forge/backend/tools/aichat"
 	"tool_forge/backend/tools/aistupid"
@@ -48,6 +49,7 @@ type App struct {
 	httptest  *httptest.Service
 	provider  *providerswitch.Service
 	aichat    *aichat.Service
+	api       *apiserver.Server
 }
 
 // NewApp creates a new App application struct
@@ -73,14 +75,19 @@ func NewApp() *App {
 	htt, _ := httptest.New()
 	prov, _ := providerswitch.New()
 	aic, _ := aichat.New()
+	apsearch := appsearch.New()
+	// 本地 API server:把指定工具暴露为 HTTP 接口
+	api := apiserver.New()
+	api.Register(appsearch.NewHandler(apsearch))
 	return &App{
 		forensic:  forensic.New(),
-		appsearch: appsearch.New(),
+		appsearch: apsearch,
 		clipboard: clip,
 		hotkey:    hkManager,
 		httptest:  htt,
 		provider:  prov,
 		aichat:    aic,
+		api:       api,
 	}
 }
 
@@ -101,6 +108,14 @@ func (a *App) startup(ctx context.Context) {
 	if a.aichat != nil {
 		a.aichat.SetWailsContext(ctx)
 	}
+	// 本地 API server:从配置文件读取,如果 enabled=true 就启动监听
+	if a.api != nil {
+		if cfg, err := apiserver.LoadConfig(); err == nil {
+			if applyErr := a.api.ApplyConfig(cfg); applyErr != nil {
+				wailsruntime.LogWarningf(ctx, "apiserver 启动失败: %v", applyErr)
+			}
+		}
+	}
 }
 
 // shutdown 在 Wails 关闭前调用,释放剪贴板监听等
@@ -111,6 +126,52 @@ func (a *App) shutdown(ctx context.Context) {
 	if a.hotkey != nil {
 		a.hotkey.Stop()
 	}
+	if a.api != nil {
+		_ = a.api.Shutdown()
+	}
+}
+
+// ================ Local API Server ================
+
+// GetAPIServerConfig 当前持久化的 apiserver 配置
+func (a *App) GetAPIServerConfig() apiserver.Config {
+	if a.api == nil {
+		return apiserver.DefaultConfig()
+	}
+	return a.api.Config()
+}
+
+// UpdateAPIServerConfig 接收前端表单提交的新配置,持久化并应用(可能启停 server)
+func (a *App) UpdateAPIServerConfig(cfg apiserver.Config) error {
+	if a.api == nil {
+		return nil
+	}
+	if err := apiserver.SaveConfig(cfg); err != nil {
+		return err
+	}
+	return a.api.ApplyConfig(cfg)
+}
+
+// GetAPIServerStatus 实时运行状态(是否在监听 / 监听地址 / 上次错误)
+func (a *App) GetAPIServerStatus() apiserver.Status {
+	if a.api == nil {
+		return apiserver.Status{}
+	}
+	return a.api.Status()
+}
+
+// ListAPIServerTools 列已注册的工具元信息(供前端 UI 渲染勾选列表)
+func (a *App) ListAPIServerTools() []apiserver.ToolInfo {
+	if a.api == nil {
+		return nil
+	}
+	return a.api.ListTools()
+}
+
+// GenerateAPIServerToken 出一个新的鉴权 token(不直接落盘,返回给前端;
+// 前端把它放进 Config 再调 UpdateAPIServerConfig 才生效)
+func (a *App) GenerateAPIServerToken() string {
+	return apiserver.GenerateToken()
 }
 
 // ================ Hotkey 管理(供 Profile → 快捷键 调用) ================

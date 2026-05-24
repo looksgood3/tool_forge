@@ -6,6 +6,7 @@ import {
   Database,
   Info,
   Keyboard,
+  Network,
   Palette,
   Plug,
   SlidersHorizontal,
@@ -21,6 +22,7 @@ import { ClipboardSection } from './sections/Clipboard'
 import { DataSection } from './sections/Data'
 import { ExternalSection } from './sections/External'
 import { HotkeysSection } from './sections/Hotkeys'
+import { LocalAPISection } from './sections/LocalAPI'
 import { PlaceholderSection } from './sections/Placeholder'
 
 type SectionId =
@@ -30,6 +32,7 @@ type SectionId =
   | 'hotkeys'
   | 'ai'
   | 'usage'
+  | 'localapi'
   | 'preferences'
   | 'data'
   | 'about'
@@ -48,6 +51,7 @@ const SECTIONS: Section[] = [
   { id: 'hotkeys', label: '快捷键', icon: Keyboard },
   { id: 'ai', label: 'AI 配置', icon: Bot },
   { id: 'usage', label: 'AI 用量', icon: SlidersHorizontal },
+  { id: 'localapi', label: '本地 API', icon: Network },
   { id: 'preferences', label: '工具偏好', icon: Palette, comingSoon: true },
   { id: 'data', label: '数据', icon: Database },
   { id: 'about', label: '关于', icon: Info },
@@ -108,6 +112,8 @@ export function Profile() {
           <AIChatSection />
         ) : active === 'usage' ? (
           <AIUsageSection />
+        ) : active === 'localapi' ? (
+          <LocalAPISection />
         ) : active === 'data' ? (
           <DataSection />
         ) : active === 'about' ? (
