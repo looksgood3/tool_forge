@@ -53,6 +53,15 @@ func PickFile(ctx context.Context, opts PickFileOptions) (string, error) {
 	})
 }
 
+// PickFiles 弹出原生文件选择对话框(可多选),返回所选文件的绝对路径列表。
+// 用户取消时返回空列表 + nil error。
+func PickFiles(ctx context.Context, title string) ([]string, error) {
+	return wailsruntime.OpenMultipleFilesDialog(ctx, wailsruntime.OpenDialogOptions{
+		Title:                title,
+		CanCreateDirectories: false,
+	})
+}
+
 // PickSaveFile 弹出原生保存对话框,返回用户选定的目标路径。
 func PickSaveFile(ctx context.Context, opts PickFileOptions) (string, error) {
 	filters := []wailsruntime.FileFilter{}

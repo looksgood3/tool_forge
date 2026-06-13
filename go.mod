@@ -6,6 +6,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/mattn/go-ieproxy v0.0.12
+	github.com/wailsapp/mimetype v1.4.1
 	github.com/wailsapp/wails/v2 v2.11.0
 	github.com/zalando/go-keyring v0.2.8
 	golang.design/x/clipboard v0.7.1
@@ -38,7 +39,6 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
-	github.com/wailsapp/mimetype v1.4.1 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/exp/shiny v0.0.0-20250606033433-dcc06ee1d476 // indirect
 	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect

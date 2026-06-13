@@ -42,6 +42,11 @@ func main() {
 			WindowIsTranslucent:  false,
 			BackdropType:         wailswin.Mica,
 		},
+		// 启用原生文件拖放:拖入文件可拿到绝对路径(文件哈希工具流式读取用)。
+		// 仅对带 --wails-drop-target:drop 的元素生效,不影响其它工具的 HTML5 图片拖拽。
+		DragAndDrop: &options.DragAndDrop{
+			EnableFileDrop: true,
+		},
 		OnStartup:  app.startup,
 		OnShutdown: app.shutdown,
 		Bind: []interface{}{

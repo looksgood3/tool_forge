@@ -20,6 +20,7 @@ import (
 	"tool_forge/backend/tools/clipboard"
 	"tool_forge/backend/tools/codexinsight"
 	"tool_forge/backend/tools/envscan"
+	"tool_forge/backend/tools/filehash"
 	"tool_forge/backend/tools/forensic"
 	"tool_forge/backend/tools/httptest"
 	"tool_forge/backend/tools/netscan"
@@ -52,6 +53,7 @@ type App struct {
 	aichat    *aichat.Service
 	api       *apiserver.Server
 	outlook   *outlookmail.Service
+	filehash  *filehash.Service
 }
 
 // NewApp creates a new App application struct
@@ -95,6 +97,7 @@ func NewApp() *App {
 		aichat:    aic,
 		api:       api,
 		outlook:   outlk,
+		filehash:  filehash.New(),
 	}
 }
 
@@ -126,6 +129,10 @@ func (a *App) startup(ctx context.Context) {
 	// Outlook 定时刷新 worker
 	if a.outlook != nil {
 		a.outlook.Start(ctx)
+	}
+	// 文件哈希:持有 wails ctx 用于推送进度事件
+	if a.filehash != nil {
+		a.filehash.SetContext(ctx)
 	}
 }
 
@@ -534,6 +541,34 @@ func (a *App) DeletePassword(key string) error {
 // ScanEnvironments 扫描本机开发者工具；未安装的条目不返回。
 func (a *App) ScanEnvironments() envscan.ScanReport {
 	return envscan.Scan(a.ctx)
+}
+
+// ================ 文件哈希 ================
+
+// StartHashJob 顺序流式计算多个文件的多个哈希,返回 jobID。
+// 进度/结果通过 filehash:progress|file-done|done 事件按 jobID 推送。
+func (a *App) StartHashJob(paths []string, algos []string) (string, error) {
+	if a.filehash == nil {
+		return "", nil
+	}
+	return a.filehash.StartHashJob(paths, algos)
+}
+
+// CancelHashJob 取消进行中的哈希任务
+func (a *App) CancelHashJob(jobID string) {
+	if a.filehash != nil {
+		a.filehash.CancelHashJob(jobID)
+	}
+}
+
+// InspectFile 读取文件信息(大小/修改时间/扩展/MIME/类别/魔数头)
+func (a *App) InspectFile(path string) (*filehash.FileInfo, error) {
+	return filehash.InspectFile(path)
+}
+
+// PickHashFiles 弹多选文件对话框,返回所选文件绝对路径
+func (a *App) PickHashFiles() ([]string, error) {
+	return system.PickFiles(a.ctx, "选择要计算哈希的文件")
 }
 
 // ================ AI Stupid Level (Drift Monitor) ================

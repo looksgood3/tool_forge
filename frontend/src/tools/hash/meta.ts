@@ -4,8 +4,8 @@ import type { ToolMeta } from '@/stores/tools'
 export const meta: ToolMeta = {
   id: 'hash',
   path: '/tools/hash',
-  title: '哈希计算',
-  description: 'MD5 / SHA-1 / SHA-256 / SHA-512 同步计算',
+  title: '文件哈希',
+  description: '文件流式 · 批量 · 校验 · 文本 · MD5/SHA/CRC32',
   icon: Shield,
   category: 'crypto',
   order: 20,
