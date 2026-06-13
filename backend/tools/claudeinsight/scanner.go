@@ -340,6 +340,7 @@ func aggregate(accums []*sessionAccum, claudeDir string) *DashboardReport {
 	perDay := make(map[string]*DailyBucket)
 	hourDist := [24]int{}
 	tokensByModel := make(map[string]*ModelTokens)
+	byProject := make(map[string]*projectAgg)
 
 	var firstTime, lastTime time.Time
 	var longest *SessionSummary
@@ -385,6 +386,31 @@ func aggregate(accums []*sessionAccum, claudeDir string) *DashboardReport {
 			dest.CacheCreationTokens += mt.CacheCreationTokens
 			dest.CacheReadTokens += mt.CacheReadTokens
 			dest.Messages += mt.Messages
+		}
+
+		// 按项目(cwd)聚合:会话数、消息数、各模型 token
+		proj := strings.TrimSpace(acc.project)
+		if proj == "" {
+			proj = "(未知项目)"
+		}
+		pa := byProject[proj]
+		if pa == nil {
+			pa = &projectAgg{byModel: make(map[string]*ModelTokens)}
+			byProject[proj] = pa
+		}
+		pa.sessions++
+		pa.messages += acc.messages
+		for model, mt := range acc.byModel {
+			d := pa.byModel[model]
+			if d == nil {
+				d = &ModelTokens{Model: model}
+				pa.byModel[model] = d
+			}
+			d.InputTokens += mt.InputTokens
+			d.OutputTokens += mt.OutputTokens
+			d.CacheCreationTokens += mt.CacheCreationTokens
+			d.CacheReadTokens += mt.CacheReadTokens
+			d.Messages += mt.Messages
 		}
 
 		summary := SessionSummary{
@@ -445,6 +471,28 @@ func aggregate(accums []*sessionAccum, claudeDir string) *DashboardReport {
 	})
 	r.TokensByModel = tbm
 
+	// by_project 按总 token 量降序;各项目内 by_model 同样降序
+	projects := make([]ProjectStats, 0, len(byProject))
+	for proj, pa := range byProject {
+		bm := make([]ModelTokens, 0, len(pa.byModel))
+		for _, mt := range pa.byModel {
+			bm = append(bm, *mt)
+		}
+		sort.Slice(bm, func(i, j int) bool {
+			return totalTokens(bm[i]) > totalTokens(bm[j])
+		})
+		projects = append(projects, ProjectStats{
+			Project:  proj,
+			Sessions: pa.sessions,
+			Messages: pa.messages,
+			ByModel:  bm,
+		})
+	}
+	sort.Slice(projects, func(i, j int) bool {
+		return projectTotalTokens(projects[i]) > projectTotalTokens(projects[j])
+	})
+	r.ByProject = projects
+
 	// recent_sessions 按结束时间倒序,截取前 10 条
 	sort.Slice(recents, func(i, j int) bool {
 		return recents[i].EndedAt > recents[j].EndedAt
@@ -459,6 +507,21 @@ func aggregate(accums []*sessionAccum, claudeDir string) *DashboardReport {
 
 func totalTokens(m ModelTokens) int64 {
 	return m.InputTokens + m.OutputTokens + m.CacheCreationTokens + m.CacheReadTokens
+}
+
+// projectAgg 是 aggregate 内部按项目累计 token 的中间态
+type projectAgg struct {
+	sessions int
+	messages int
+	byModel  map[string]*ModelTokens
+}
+
+func projectTotalTokens(p ProjectStats) int64 {
+	var t int64
+	for _, m := range p.ByModel {
+		t += totalTokens(m)
+	}
+	return t
 }
 
 func emptyReport(claudeDir string) *DashboardReport {
@@ -476,6 +539,7 @@ func fillLast7Days(r *DashboardReport, now time.Time) *DashboardReport {
 	}
 	r.Calendar = []DailyBucket{}
 	r.TokensByModel = []ModelTokens{}
+	r.ByProject = []ProjectStats{}
 	r.RecentSessions = []SessionSummary{}
 	return r
 }

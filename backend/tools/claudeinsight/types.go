@@ -19,6 +19,15 @@ type ModelTokens struct {
 	Messages              int    `json:"messages"`
 }
 
+// ProjectStats 按项目(cwd)聚合的用量,用于概览"按项目排行"。
+// ByModel 让前端能按各模型单价分别算出该项目的估算花费。
+type ProjectStats struct {
+	Project  string        `json:"project"`
+	Sessions int           `json:"sessions"`
+	Messages int           `json:"messages"`
+	ByModel  []ModelTokens `json:"by_model"`
+}
+
 // SessionSummary 一个会话的精简摘要(用于最近会话列表 / 最长会话)
 type SessionSummary struct {
 	ID          string `json:"id"`
@@ -106,7 +115,8 @@ type DashboardReport struct {
 	HourDistribution [24]int       `json:"hour_distribution"`  // 本地时区下每小时消息数
 
 	// --- Token ---
-	TokensByModel []ModelTokens `json:"tokens_by_model"` // 按总 token 量降序
+	TokensByModel []ModelTokens  `json:"tokens_by_model"` // 按总 token 量降序
+	ByProject     []ProjectStats `json:"by_project"`      // 按项目聚合,按总 token 量降序
 
 	// --- 会话 ---
 	LongestSession *SessionSummary  `json:"longest_session,omitempty"` // 按消息数最多

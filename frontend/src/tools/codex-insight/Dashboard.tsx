@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CostCard } from '@/components/tool/CostCard'
+import { usePricingStore, codexCost, formatUSD, type CodexModelTokens } from '@/lib/pricing'
 import { BuildCodexDashboard } from '../../../wailsjs/go/main/App'
 import type { codexinsight } from '../../../wailsjs/go/models'
 import {
@@ -65,11 +66,11 @@ export function Dashboard({ reloadToken }: Props) {
       <PrivacyBanner dir={report.codex_dir} />
       <OverviewCards report={report} />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <ActivityChart buckets={report.last_7_days} hours={report.hour_distribution} />
-        <CalendarHeatmap buckets={report.calendar} />
+        <Last7DaysChart buckets={report.last_7_days} />
+        <ByProjectChart projects={report.top_projects} />
       </div>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <TopProjectsCard rows={report.top_projects} />
+        <CalendarHeatmap buckets={report.calendar} />
         <TokensByModelTable rows={report.tokens_by_model} />
       </div>
       <CostCard kind="codex" models={report.tokens_by_model} />
@@ -186,97 +187,51 @@ function StatCard({
   )
 }
 
-function ActivityChart({
-  buckets,
-  hours,
-}: {
-  buckets: codexinsight.DailyBucket[]
-  hours: number[]
-}) {
-  const [mode, setMode] = useState<'week' | 'day'>('week')
-
-  const weekTotal = buckets.reduce((s, b) => s + b.messages, 0)
-  const weekPeak = buckets.reduce((p, b) => (b.messages > p.messages ? b : p), buckets[0])
-  const hourTotal = hours.reduce((s, n) => s + n, 0)
-  const peakHour = hours.reduce((pi, n, i) => (n > hours[pi] ? i : pi), 0)
-  const peakValue = hours[peakHour]
-
+function Last7DaysChart({ buckets }: { buckets: codexinsight.DailyBucket[] }) {
+  const total = buckets.reduce((s, b) => s + b.messages, 0)
+  const peak = buckets.reduce((p, b) => (b.messages > p.messages ? b : p), buckets[0])
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="mb-3 flex items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium">
-          {mode === 'week' ? '近 7 天消息数' : '24 小时活跃分布'}
-        </h3>
-        <div className="flex items-center gap-1">
-          <SegmentButton active={mode === 'week'} onClick={() => setMode('week')}>
-            近 7 天
-          </SegmentButton>
-          <SegmentButton active={mode === 'day'} onClick={() => setMode('day')}>
-            24 小时
-          </SegmentButton>
-        </div>
+        <h3 className="text-sm font-medium">近 7 天消息数</h3>
+        <span className="text-[11px] text-muted-foreground">
+          共 {total.toLocaleString()} 条 · 日均 {Math.round(total / 7).toLocaleString()}
+          {peak && peak.messages > 0 && (
+            <> · 峰值 {peak.messages} 条（{weekdayLabel(peak.date)}）</>
+          )}
+        </span>
       </div>
-      {mode === 'week' ? (
-        <>
-          <div className="mb-2 text-[11px] text-muted-foreground">
-            共 {weekTotal.toLocaleString()} 条 · 日均 {Math.round(weekTotal / 7).toLocaleString()}
-            {weekPeak && weekPeak.messages > 0 && (
-              <> · 峰值 {weekPeak.messages} 条（{weekdayLabel(weekPeak.date)}）</>
-            )}
-          </div>
-          <WeeklyBars buckets={buckets} />
-        </>
-      ) : (
-        <>
-          <div className="mb-2 text-[11px] text-muted-foreground">
-            {peakValue > 0
-              ? `最活跃 ${peakHour.toString().padStart(2, '0')}:00 · ${peakValue} 条 · 合计 ${hourTotal.toLocaleString()}`
-              : '暂无数据'}
-          </div>
-          <HourlyBars hours={hours} peakHour={peakHour} />
-        </>
-      )}
+      <WeeklyBars buckets={buckets} />
     </div>
   )
 }
 
-function SegmentButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'h-6 rounded px-2 text-[11px] transition-colors',
-        active
-          ? 'bg-info/15 text-info'
-          : 'text-muted-foreground hover:bg-secondary'
-      )}
-    >
-      {children}
-    </button>
-  )
+// niceAxisMax 给柱状图算一个"漂亮"的轴上限:略高于数据峰值并取整。
+// 例如峰值 6000 -> 6500、200 -> 250、37 -> 40,让最高的柱子也留一点顶部空白。
+function niceAxisMax(dataMax: number): number {
+  if (dataMax <= 0) return 1
+  const mag = Math.pow(10, Math.floor(Math.log10(dataMax)))
+  const step = Math.max(1, mag / 2)
+  return (Math.floor(dataMax / step) + 1) * step
 }
 
 function WeeklyBars({ buckets }: { buckets: codexinsight.DailyBucket[] }) {
-  const max = Math.max(1, ...buckets.map((b) => b.messages))
+  const dataMax = Math.max(0, ...buckets.map((b) => b.messages))
+  const axisMax = niceAxisMax(dataMax)
+  const peak = buckets.reduce((p, b) => (b.messages > p.messages ? b : p), buckets[0])
+  // items-stretch(默认)让每列撑满容器高度,柱子的百分比高度才有参照,否则会塌成一条线
   return (
-    <div className="flex h-36 items-end gap-3">
+    <div className="flex h-44 items-stretch gap-3">
       {buckets.map((b) => {
-        const h = (b.messages / max) * 100
+        const h = (b.messages / axisMax) * 100
+        const isPeak = peak && b.messages > 0 && b.messages === peak.messages
         return (
           <div
             key={b.date}
-            className="group flex flex-1 flex-col items-center gap-1"
+            className="group flex flex-1 flex-col items-center"
             title={`${b.date} · ${b.messages} 条`}
           >
-            <div className="text-[11px] font-mono tabular-nums text-foreground/80">
+            <div className="mb-1 h-4 text-[11px] font-mono tabular-nums text-foreground/80">
               {b.messages > 0 ? b.messages : ''}
             </div>
             <div className="flex w-full flex-1 items-end">
@@ -285,12 +240,14 @@ function WeeklyBars({ buckets }: { buckets: codexinsight.DailyBucket[] }) {
                   'w-full rounded-t transition-colors',
                   b.messages === 0
                     ? 'bg-secondary'
+                    : isPeak
+                    ? 'bg-info/80 group-hover:bg-info'
                     : 'bg-info/40 group-hover:bg-info/70'
                 )}
                 style={{ height: `${h}%`, minHeight: b.messages > 0 ? 4 : 2 }}
               />
             </div>
-            <div className="text-[10px] text-muted-foreground">
+            <div className="mt-1 text-[10px] text-muted-foreground">
               {weekdayLabel(b.date)}
             </div>
             <div className="text-[10px] text-muted-foreground/70">
@@ -300,48 +257,6 @@ function WeeklyBars({ buckets }: { buckets: codexinsight.DailyBucket[] }) {
         )
       })}
     </div>
-  )
-}
-
-function HourlyBars({ hours, peakHour }: { hours: number[]; peakHour: number }) {
-  const max = Math.max(1, ...hours)
-  return (
-    <>
-      <div className="flex h-36 items-end gap-[3px]">
-        {hours.map((n, i) => {
-          const h = (n / max) * 100
-          const isPeak = n > 0 && i === peakHour
-          return (
-            <div
-              key={i}
-              className="group relative flex flex-1 flex-col items-center"
-              title={`${i.toString().padStart(2, '0')}:00 · ${n} 条`}
-            >
-              <div className="flex h-full w-full items-end">
-                <div
-                  className={cn(
-                    'w-full rounded-t transition-colors',
-                    n === 0
-                      ? 'bg-secondary'
-                      : isPeak
-                      ? 'bg-info/80 group-hover:bg-info'
-                      : 'bg-info/40 group-hover:bg-info/70'
-                  )}
-                  style={{ height: `${h}%`, minHeight: n > 0 ? 3 : 2 }}
-                />
-              </div>
-            </div>
-          )
-        })}
-      </div>
-      <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-        <span>00</span>
-        <span>06</span>
-        <span>12</span>
-        <span>18</span>
-        <span>23</span>
-      </div>
-    </>
   )
 }
 
@@ -405,36 +320,108 @@ function heatLevelClass(level: number): string {
   }
 }
 
-function TopProjectsCard({ rows }: { rows: codexinsight.ProjectStat[] }) {
-  if (rows.length === 0) return null
-  const max = Math.max(1, ...rows.map((r) => r.messages))
+const PROJECT_BAR_PALETTE = [
+  'bg-info/70',
+  'bg-emerald-500/60',
+  'bg-amber-500/60',
+  'bg-violet-500/60',
+  'bg-rose-500/60',
+  'bg-cyan-500/60',
+  'bg-lime-500/60',
+  'bg-orange-500/60',
+]
+
+function ByProjectChart({ projects }: { projects: codexinsight.ProjectStat[] }) {
+  const prices = usePricingStore((s) => s.prices)
+  const [metric, setMetric] = useState<'cost' | 'tokens'>('cost')
+
+  const rows = useMemo(() => {
+    return (projects ?? [])
+      .map((p) => {
+        let tokens = 0
+        let cost = 0
+        for (const m of p.by_model) {
+          tokens += m.input_tokens + m.output_tokens + m.cached_tokens + m.reasoning_tokens
+          cost += codexCost(m as unknown as CodexModelTokens, prices) ?? 0
+        }
+        return { project: p.project, sessions: p.sessions, messages: p.messages, tokens, cost }
+      })
+      .sort((a, b) => (metric === 'cost' ? b.cost - a.cost : b.tokens - a.tokens))
+  }, [projects, prices, metric])
+
+  const top = rows.slice(0, 8)
+  const rest = rows.length - top.length
+  const max = Math.max(1, ...top.map((r) => (metric === 'cost' ? r.cost : r.tokens)))
+
   return (
     <div className="rounded-lg border border-border bg-card p-4">
-      <h3 className="mb-3 text-sm font-medium">Top 项目</h3>
-      <ul className="space-y-1.5">
-        {rows.map((r) => (
-          <li key={r.project} className="space-y-0.5">
-            <div className="flex items-baseline gap-2 text-xs">
-              <Folder className="h-3 w-3 shrink-0 text-info" />
-              <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" title={r.project}>
-                {shortenProject(r.project)}
-              </span>
-              <span className="shrink-0 font-mono text-[11px] text-foreground">
-                {r.messages}
-              </span>
-              <span className="shrink-0 text-[10px] text-muted-foreground">
-                · {r.sessions} 次
-              </span>
-            </div>
-            <div className="h-1 w-full overflow-hidden rounded bg-secondary/60">
-              <div
-                className="h-full bg-info/50"
-                style={{ width: `${(r.messages / max) * 100}%` }}
-              />
-            </div>
-          </li>
-        ))}
-      </ul>
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <h3 className="flex items-center gap-1.5 text-sm font-medium">
+          <Folder className="h-4 w-4 text-info" />
+          按项目排行
+        </h3>
+        <MetricToggle metric={metric} onChange={setMetric} />
+      </div>
+      {top.length === 0 ? (
+        <div className="py-8 text-center text-xs text-muted-foreground">暂无项目数据</div>
+      ) : (
+        <div className="space-y-2">
+          {top.map((r, i) => {
+            const val = metric === 'cost' ? r.cost : r.tokens
+            const w = (val / max) * 100
+            return (
+              <div key={r.project} className="group" title={r.project}>
+                <div className="mb-0.5 flex items-baseline justify-between gap-2 text-xs">
+                  <span className="min-w-0 flex-1 truncate font-mono text-foreground/80">
+                    {shortenProject(r.project)}
+                  </span>
+                  <span className="shrink-0 font-mono tabular-nums">
+                    {metric === 'cost' ? formatUSD(r.cost) : formatTokens(r.tokens)}
+                  </span>
+                  <span className="w-14 shrink-0 text-right text-[10px] text-muted-foreground">
+                    {r.sessions} 会话
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className={cn('h-full rounded-full transition-all', PROJECT_BAR_PALETTE[i % PROJECT_BAR_PALETTE.length])}
+                    style={{ width: `${Math.max(w, val > 0 ? 2 : 0)}%` }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+          {rest > 0 && (
+            <div className="pt-1 text-[10px] text-muted-foreground/70">另有 {rest} 个项目未显示</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MetricToggle({
+  metric,
+  onChange,
+}: {
+  metric: 'cost' | 'tokens'
+  onChange: (m: 'cost' | 'tokens') => void
+}) {
+  return (
+    <div className="flex overflow-hidden rounded-md border border-border text-[11px]">
+      {(['cost', 'tokens'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => onChange(m)}
+          className={cn(
+            'px-2 py-0.5 transition-colors',
+            metric === m ? 'bg-info/15 text-info' : 'text-muted-foreground hover:bg-secondary'
+          )}
+        >
+          {m === 'cost' ? '花费' : 'Token'}
+        </button>
+      ))}
     </div>
   )
 }

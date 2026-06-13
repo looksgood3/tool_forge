@@ -4,6 +4,7 @@ import {
   Calendar,
   Clock,
   Coins,
+  Database,
   Folder,
   Loader2,
   MessageSquare,
@@ -13,6 +14,13 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CostCard } from '@/components/tool/CostCard'
+import {
+  usePricingStore,
+  priceForModel,
+  claudeCost,
+  formatUSD,
+  type ClaudeModelTokens,
+} from '@/lib/pricing'
 import { BuildClaudeDashboard } from '../../../wailsjs/go/main/App'
 import type { claudeinsight } from '../../../wailsjs/go/models'
 import {
@@ -66,9 +74,14 @@ export function Dashboard({ reloadToken }: DashboardProps) {
       <OverviewCards report={report} />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Last7DaysChart buckets={report.last_7_days} />
-        <HourDistributionChart hours={report.hour_distribution} />
+        <ByProjectChart projects={report.by_project} />
       </div>
-      <CalendarHeatmap buckets={report.calendar} />
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <CalendarHeatmap buckets={report.calendar} />
+        </div>
+        <CacheModelCard models={report.tokens_by_model} />
+      </div>
       <TokensByModelTable rows={report.tokens_by_model} />
       <CostCard kind="claude" models={report.tokens_by_model} />
       <LongestSessionBanner s={report.longest_session} />
@@ -189,8 +202,18 @@ function StatCard({
   )
 }
 
+// niceAxisMax 给柱状图算一个"漂亮"的轴上限:略高于数据峰值并取整。
+// 例如峰值 6000 -> 6500、200 -> 250、37 -> 40,让最高的柱子也留一点顶部空白。
+function niceAxisMax(dataMax: number): number {
+  if (dataMax <= 0) return 1
+  const mag = Math.pow(10, Math.floor(Math.log10(dataMax)))
+  const step = Math.max(1, mag / 2)
+  return (Math.floor(dataMax / step) + 1) * step
+}
+
 function Last7DaysChart({ buckets }: { buckets: claudeinsight.DailyBucket[] }) {
-  const max = Math.max(1, ...buckets.map((b) => b.messages))
+  const dataMax = Math.max(0, ...buckets.map((b) => b.messages))
+  const axisMax = niceAxisMax(dataMax)
   const total = buckets.reduce((s, b) => s + b.messages, 0)
   const peak = buckets.reduce((p, b) => (b.messages > p.messages ? b : p), buckets[0])
   return (
@@ -205,16 +228,18 @@ function Last7DaysChart({ buckets }: { buckets: claudeinsight.DailyBucket[] }) {
           )}
         </span>
       </div>
-      <div className="flex h-36 items-end gap-3">
+      {/* items-stretch(默认)让每列撑满容器高度,柱子的百分比高度才有参照,否则会塌成一条线 */}
+      <div className="flex h-44 items-stretch gap-3">
         {buckets.map((b) => {
-          const h = (b.messages / max) * 100
+          const h = (b.messages / axisMax) * 100
+          const isPeak = peak && b.messages > 0 && b.messages === peak.messages
           return (
             <div
               key={b.date}
-              className="group flex flex-1 flex-col items-center gap-1"
+              className="group flex flex-1 flex-col items-center"
               title={`${b.date} · ${b.messages} 条`}
             >
-              <div className="text-[11px] font-mono tabular-nums text-foreground/80">
+              <div className="mb-1 h-4 text-[11px] font-mono tabular-nums text-foreground/80">
                 {b.messages > 0 ? b.messages : ''}
               </div>
               <div className="flex w-full flex-1 items-end">
@@ -223,12 +248,14 @@ function Last7DaysChart({ buckets }: { buckets: claudeinsight.DailyBucket[] }) {
                     'w-full rounded-t transition-colors',
                     b.messages === 0
                       ? 'bg-secondary'
+                      : isPeak
+                      ? 'bg-info/80 group-hover:bg-info'
                       : 'bg-info/40 group-hover:bg-info/70'
                   )}
                   style={{ height: `${h}%`, minHeight: b.messages > 0 ? 4 : 2 }}
                 />
               </div>
-              <div className="text-[10px] text-muted-foreground">
+              <div className="mt-1 text-[10px] text-muted-foreground">
                 {weekdayLabel(b.date)}
               </div>
               <div className="text-[10px] text-muted-foreground/70">
@@ -242,104 +269,337 @@ function Last7DaysChart({ buckets }: { buckets: claudeinsight.DailyBucket[] }) {
   )
 }
 
-function HourDistributionChart({ hours }: { hours: number[] }) {
-  const max = Math.max(1, ...hours)
-  const total = hours.reduce((s, n) => s + n, 0)
-  const peakHour = hours.reduce((pi, n, i) => (n > hours[pi] ? i : pi), 0)
-  const peakValue = hours[peakHour]
+const PROJECT_BAR_PALETTE = [
+  'bg-info/70',
+  'bg-emerald-500/60',
+  'bg-amber-500/60',
+  'bg-violet-500/60',
+  'bg-rose-500/60',
+  'bg-cyan-500/60',
+  'bg-lime-500/60',
+  'bg-orange-500/60',
+]
+
+function ByProjectChart({ projects }: { projects: claudeinsight.ProjectStats[] }) {
+  const prices = usePricingStore((s) => s.prices)
+  const [metric, setMetric] = useState<'cost' | 'tokens'>('cost')
+
+  const rows = useMemo(() => {
+    return (projects ?? [])
+      .map((p) => {
+        let tokens = 0
+        let cost = 0
+        for (const m of p.by_model) {
+          tokens += m.input_tokens + m.output_tokens + m.cache_creation_tokens + m.cache_read_tokens
+          cost += claudeCost(m as unknown as ClaudeModelTokens, prices) ?? 0
+        }
+        return { project: p.project, sessions: p.sessions, messages: p.messages, tokens, cost }
+      })
+      .sort((a, b) => (metric === 'cost' ? b.cost - a.cost : b.tokens - a.tokens))
+  }, [projects, prices, metric])
+
+  const top = rows.slice(0, 8)
+  const rest = rows.length - top.length
+  const max = Math.max(1, ...top.map((r) => (metric === 'cost' ? r.cost : r.tokens)))
+
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="mb-3 flex items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium">24 小时活跃分布</h3>
-        <span className="text-[11px] text-muted-foreground">
-          {peakValue > 0
-            ? `最活跃 ${peakHour.toString().padStart(2, '0')}:00 · ${peakValue} 条`
-            : '暂无数据'}
-        </span>
+        <h3 className="flex items-center gap-1.5 text-sm font-medium">
+          <Folder className="h-4 w-4 text-info" />
+          按项目排行
+        </h3>
+        <MetricToggle metric={metric} onChange={setMetric} />
       </div>
-      <div className="flex h-36 items-end gap-[3px]">
-        {hours.map((n, i) => {
-          const h = (n / max) * 100
-          const isPeak = n > 0 && i === peakHour
-          return (
-            <div
-              key={i}
-              className="group relative flex flex-1 flex-col items-center"
-              title={`${i.toString().padStart(2, '0')}:00 · ${n} 条`}
-            >
-              <div className="flex h-full w-full items-end">
-                <div
-                  className={cn(
-                    'w-full rounded-t transition-colors',
-                    n === 0
-                      ? 'bg-secondary'
-                      : isPeak
-                      ? 'bg-info/80 group-hover:bg-info'
-                      : 'bg-info/40 group-hover:bg-info/70'
-                  )}
-                  style={{ height: `${h}%`, minHeight: n > 0 ? 3 : 2 }}
-                />
+      {top.length === 0 ? (
+        <div className="py-8 text-center text-xs text-muted-foreground">暂无项目数据</div>
+      ) : (
+        <div className="space-y-2">
+          {top.map((r, i) => {
+            const val = metric === 'cost' ? r.cost : r.tokens
+            const w = (val / max) * 100
+            return (
+              <div key={r.project} className="group" title={r.project}>
+                <div className="mb-0.5 flex items-baseline justify-between gap-2 text-xs">
+                  <span className="min-w-0 flex-1 truncate font-mono text-foreground/80">
+                    {shortenProject(r.project)}
+                  </span>
+                  <span className="shrink-0 font-mono tabular-nums">
+                    {metric === 'cost' ? formatUSD(r.cost) : formatTokens(r.tokens)}
+                  </span>
+                  <span className="w-14 shrink-0 text-right text-[10px] text-muted-foreground">
+                    {r.sessions} 会话
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className={cn('h-full rounded-full transition-all', PROJECT_BAR_PALETTE[i % PROJECT_BAR_PALETTE.length])}
+                    style={{ width: `${Math.max(w, val > 0 ? 2 : 0)}%` }}
+                  />
+                </div>
               </div>
-            </div>
-          )
-        })}
-      </div>
-      <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-        <span>00</span>
-        <span>06</span>
-        <span>12</span>
-        <span>18</span>
-        <span>23</span>
-      </div>
-      {total > 0 && (
-        <div className="mt-1 text-[10px] text-muted-foreground/70">
-          合计 {total.toLocaleString()} 条消息
+            )
+          })}
+          {rest > 0 && (
+            <div className="pt-1 text-[10px] text-muted-foreground/70">另有 {rest} 个项目未显示</div>
+          )}
         </div>
       )}
     </div>
   )
 }
 
+function MetricToggle({
+  metric,
+  onChange,
+}: {
+  metric: 'cost' | 'tokens'
+  onChange: (m: 'cost' | 'tokens') => void
+}) {
+  return (
+    <div className="flex overflow-hidden rounded-md border border-border text-[11px]">
+      {(['cost', 'tokens'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => onChange(m)}
+          className={cn(
+            'px-2 py-0.5 transition-colors',
+            metric === m ? 'bg-info/15 text-info' : 'text-muted-foreground hover:bg-secondary'
+          )}
+        >
+          {m === 'cost' ? '花费' : 'Token'}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+const MODEL_SHARE_PALETTE = [
+  'bg-info/70',
+  'bg-emerald-500/60',
+  'bg-amber-500/60',
+  'bg-violet-500/60',
+  'bg-rose-500/60',
+  'bg-cyan-500/60',
+]
+
+function CacheModelCard({ models }: { models: claudeinsight.ModelTokens[] }) {
+  const prices = usePricingStore((s) => s.prices)
+
+  const { hitRate, savings, shares, hasData } = useMemo(() => {
+    let input = 0
+    let cacheWrite = 0
+    let cacheRead = 0
+    let sav = 0
+    const perModel = (models ?? []).map((m) => {
+      input += m.input_tokens
+      cacheWrite += m.cache_creation_tokens
+      cacheRead += m.cache_read_tokens
+      const p = priceForModel(m.model, prices)
+      if (p) sav += (m.cache_read_tokens * Math.max(0, p.input - p.cacheRead)) / 1_000_000
+      const tot = m.input_tokens + m.output_tokens + m.cache_creation_tokens + m.cache_read_tokens
+      return { model: m.model, tot }
+    })
+    const grand = perModel.reduce((s, x) => s + x.tot, 0)
+    const denom = input + cacheWrite + cacheRead
+    const shares = perModel
+      .filter((x) => x.tot > 0)
+      .sort((a, b) => b.tot - a.tot)
+      .map((x) => ({ ...x, pct: grand > 0 ? (x.tot / grand) * 100 : 0 }))
+    return {
+      hitRate: denom > 0 ? (cacheRead / denom) * 100 : 0,
+      savings: sav,
+      shares,
+      hasData: grand > 0,
+    }
+  }, [models, prices])
+
+  return (
+    <div className="flex flex-col rounded-lg border border-border bg-card p-4">
+      <h3 className="mb-3 flex items-center gap-1.5 text-sm font-medium">
+        <Database className="h-4 w-4 text-info" />
+        缓存与模型
+      </h3>
+      {!hasData ? (
+        <div className="flex flex-1 items-center justify-center py-6 text-xs text-muted-foreground">
+          暂无用量数据
+        </div>
+      ) : (
+        <div className="flex flex-1 flex-col gap-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-[11px] text-muted-foreground">缓存命中率</div>
+              <div className="mt-0.5 text-xl font-semibold tabular-nums">{hitRate.toFixed(0)}%</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-muted-foreground">缓存约省下</div>
+              <div className="mt-0.5 text-xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                {formatUSD(savings)}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-1.5 text-[11px] text-muted-foreground">模型占比（按 Token）</div>
+            <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-secondary">
+              {shares.map((s, i) => (
+                <div
+                  key={s.model}
+                  className={cn('h-full', MODEL_SHARE_PALETTE[i % MODEL_SHARE_PALETTE.length])}
+                  style={{ width: `${s.pct}%` }}
+                  title={`${s.model} · ${s.pct.toFixed(0)}%`}
+                />
+              ))}
+            </div>
+            <div className="mt-2 space-y-1">
+              {shares.slice(0, 4).map((s, i) => (
+                <div key={s.model} className="flex items-center gap-1.5 text-[11px]">
+                  <span
+                    className={cn('h-2 w-2 shrink-0 rounded-sm', MODEL_SHARE_PALETTE[i % MODEL_SHARE_PALETTE.length])}
+                  />
+                  <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" title={s.model}>
+                    {shortModelName(s.model)}
+                  </span>
+                  <span className="shrink-0 font-mono tabular-nums">{s.pct.toFixed(0)}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// shortModelName 把 claude-opus-4-8-... 这种长 id 压短一点,图例里好看
+function shortModelName(model: string): string {
+  if (!model) return '(未知)'
+  return model.replace(/^claude-/, '').replace(/-\d{8}$/, '')
+}
+
+// 行0=周日;只在周一/周三/周五给标签,跟 GitHub 贡献图一致
+const WEEKDAY_LETTERS = ['', '一', '', '三', '', '五', '']
+
 function CalendarHeatmap({ buckets }: { buckets: claudeinsight.DailyBucket[] }) {
   const weeks = 26
-  const days = weeks * 7
   const today = new Date()
   today.setHours(0, 0, 0, 0)
+  const todayKey = formatLocalDate(today)
 
   const map = new Map<string, number>()
   for (const b of buckets) map.set(b.date, b.messages)
 
-  const cells: { date: string; messages: number }[] = []
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today)
-    d.setDate(d.getDate() - i)
-    const key = formatLocalDate(d)
-    cells.push({ date: key, messages: map.get(key) ?? 0 })
+  // 网格按周对齐:行0=周日,最后一列=本周。从"本周日"往前推 weeks-1 周作为左上角。
+  const thisSunday = new Date(today)
+  thisSunday.setDate(today.getDate() - today.getDay())
+  const gridStart = new Date(thisSunday)
+  gridStart.setDate(thisSunday.getDate() - (weeks - 1) * 7)
+
+  type Cell = { date: string; messages: number; future: boolean }
+  const columns: { days: Cell[]; monthLabel: string }[] = []
+  let prevMonth = -1
+  let activeDays = 0
+  let totalMsg = 0
+  const nonzero: number[] = []
+  for (let w = 0; w < weeks; w++) {
+    const days: Cell[] = []
+    let monthLabel = ''
+    for (let r = 0; r < 7; r++) {
+      const d = new Date(gridStart)
+      d.setDate(gridStart.getDate() + w * 7 + r)
+      const key = formatLocalDate(d)
+      const future = key > todayKey
+      const messages = future ? 0 : map.get(key) ?? 0
+      if (!future && messages > 0) {
+        activeDays++
+        totalMsg += messages
+        nonzero.push(messages)
+      }
+      days.push({ date: key, messages, future })
+      if (r === 0) {
+        const m = d.getMonth()
+        if (m !== prevMonth) {
+          monthLabel = `${m + 1}月`
+          prevMonth = m
+        }
+      }
+    }
+    columns.push({ days, monthLabel })
   }
 
-  const max = Math.max(1, ...cells.map((c) => c.messages))
+  // 用 85 分位作为色阶上限,避免某一天爆量把其它天全压成最浅色
+  nonzero.sort((a, b) => a - b)
+  const scaleMax = nonzero.length ? Math.max(1, nonzero[Math.floor((nonzero.length - 1) * 0.85)]) : 1
 
   return (
     <div className="rounded-lg border border-border bg-card p-4">
-      <h3 className="mb-3 text-sm font-medium">活跃日历（最近 26 周）</h3>
-      <div className="flex gap-[3px] overflow-x-auto">
-        {Array.from({ length: weeks }).map((_, w) => (
-          <div key={w} className="flex flex-col gap-[3px]">
-            {Array.from({ length: 7 }).map((_, d) => {
-              const idx = w * 7 + d
-              const c = cells[idx]
-              if (!c) return <div key={d} className="h-3 w-3" />
-              const level = c.messages === 0 ? 0 : Math.ceil((c.messages / max) * 4)
-              return (
-                <div
-                  key={d}
-                  title={`${c.date} · ${c.messages} 条`}
-                  className={cn('h-3 w-3 rounded-sm', heatLevelClass(level))}
-                />
-              )
-            })}
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <h3 className="text-sm font-medium">活跃日历</h3>
+        <span className="text-[11px] text-muted-foreground">
+          最近 {weeks} 周 · {activeDays} 天活跃 · 共 {totalMsg.toLocaleString()} 条
+        </span>
+      </div>
+      <div className="overflow-x-auto pb-1">
+        <div className="inline-flex flex-col gap-1">
+          {/* 月份标签行 */}
+          <div className="flex gap-[3px]">
+            <div className="w-4 shrink-0" />
+            {columns.map((col, ci) => (
+              <div key={ci} className="relative h-3 w-3 shrink-0">
+                {col.monthLabel && (
+                  <span className="absolute left-0 top-0 whitespace-nowrap text-[9px] leading-3 text-muted-foreground">
+                    {col.monthLabel}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
+          {/* 主体:左侧周几 + 各周列 */}
+          <div className="flex gap-[3px]">
+            <div className="flex w-4 shrink-0 flex-col gap-[3px]">
+              {WEEKDAY_LETTERS.map((lbl, i) => (
+                <div key={i} className="flex h-3 items-center text-[9px] leading-none text-muted-foreground">
+                  {lbl}
+                </div>
+              ))}
+            </div>
+            {columns.map((col, ci) => (
+              <div key={ci} className="flex flex-col gap-[3px]">
+                {col.days.map((c, ri) =>
+                  c.future ? (
+                    <div key={ri} className="h-3 w-3" />
+                  ) : (
+                    <div
+                      key={ri}
+                      title={`${c.date} · ${c.messages} 条`}
+                      className={cn(
+                        'h-3 w-3 rounded-[3px] ring-1 ring-inset ring-black/[0.04] dark:ring-white/[0.05]',
+                        heatLevelClass(
+                          c.messages === 0 ? 0 : Math.min(4, Math.ceil((c.messages / scaleMax) * 4))
+                        )
+                      )}
+                    />
+                  )
+                )}
+              </div>
+            ))}
+          </div>
+          {/* 图例 */}
+          <div className="flex items-center gap-1 self-end pt-1 text-[9px] text-muted-foreground">
+            <span>少</span>
+            {[0, 1, 2, 3, 4].map((l) => (
+              <span
+                key={l}
+                className={cn(
+                  'h-3 w-3 rounded-[3px] ring-1 ring-inset ring-black/[0.04] dark:ring-white/[0.05]',
+                  heatLevelClass(l)
+                )}
+              />
+            ))}
+            <span>多</span>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -350,11 +610,11 @@ function heatLevelClass(level: number): string {
     case 0:
       return 'bg-secondary'
     case 1:
-      return 'bg-info/20'
+      return 'bg-info/25'
     case 2:
-      return 'bg-info/40'
+      return 'bg-info/45'
     case 3:
-      return 'bg-info/60'
+      return 'bg-info/65'
     default:
       return 'bg-info/90'
   }

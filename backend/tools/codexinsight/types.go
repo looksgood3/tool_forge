@@ -31,11 +31,13 @@ type SessionSummary struct {
 	Model       string `json:"model"`
 }
 
-// ProjectStat 按项目(cwd)聚合的使用排行
+// ProjectStat 按项目(cwd)聚合的使用排行。
+// ByModel 让前端能按各模型单价分别算出该项目的估算花费(花费/Token 排序)。
 type ProjectStat struct {
-	Project  string `json:"project"`
-	Sessions int    `json:"sessions"`
-	Messages int    `json:"messages"`
+	Project  string        `json:"project"`
+	Sessions int           `json:"sessions"`
+	Messages int           `json:"messages"`
+	ByModel  []ModelTokens `json:"by_model"`
 }
 
 // DailyTokens 按日期的 token 汇总

@@ -499,31 +499,55 @@ func aggregate(accums []*sessionAccum, codexDir string) *DashboardReport {
 		}
 	}
 
-	// Top 项目排行(按消息数降序)
-	projectAgg := map[string]*ProjectStat{}
+	// 项目排行:会话/消息数 + 各模型 token(供前端按 花费/Token 排序)。
+	// 返回全部项目,前端自行截取并显示"另有 N 个"。
+	projectAgg := map[string]*projAgg{}
 	for _, acc := range accums {
 		proj := acc.project
 		if proj == "" {
 			proj = "（未知）"
 		}
-		ps := projectAgg[proj]
-		if ps == nil {
-			ps = &ProjectStat{Project: proj}
-			projectAgg[proj] = ps
+		pa := projectAgg[proj]
+		if pa == nil {
+			pa = &projAgg{byModel: map[string]*ModelTokens{}}
+			projectAgg[proj] = pa
 		}
-		ps.Sessions++
-		ps.Messages += acc.messages
+		pa.sessions++
+		pa.messages += acc.messages
+		if acc.tokens.Seen {
+			model := acc.lastModel
+			if model == "" {
+				model = "unknown"
+			}
+			mt := pa.byModel[model]
+			if mt == nil {
+				mt = &ModelTokens{Model: model}
+				pa.byModel[model] = mt
+			}
+			mt.InputTokens += acc.tokens.Input
+			mt.OutputTokens += acc.tokens.Output
+			mt.CachedTokens += acc.tokens.Cached
+			mt.ReasoningTokens += acc.tokens.Reasoning
+			mt.Sessions++
+		}
 	}
 	topProjects := make([]ProjectStat, 0, len(projectAgg))
-	for _, ps := range projectAgg {
-		topProjects = append(topProjects, *ps)
+	for proj, pa := range projectAgg {
+		bm := make([]ModelTokens, 0, len(pa.byModel))
+		for _, mt := range pa.byModel {
+			bm = append(bm, *mt)
+		}
+		sort.Slice(bm, func(i, j int) bool { return totalTokens(bm[i]) > totalTokens(bm[j]) })
+		topProjects = append(topProjects, ProjectStat{
+			Project:  proj,
+			Sessions: pa.sessions,
+			Messages: pa.messages,
+			ByModel:  bm,
+		})
 	}
 	sort.Slice(topProjects, func(i, j int) bool {
-		return topProjects[i].Messages > topProjects[j].Messages
+		return projectTotalTokens(topProjects[i]) > projectTotalTokens(topProjects[j])
 	})
-	if len(topProjects) > 8 {
-		topProjects = topProjects[:8]
-	}
 	r.TopProjects = topProjects
 
 	// Token 按天走势(近 30 天):每个 session 的 token 归属到 session 结束那天
@@ -589,6 +613,21 @@ func aggregate(accums []*sessionAccum, codexDir string) *DashboardReport {
 
 func totalTokens(m ModelTokens) int64 {
 	return m.InputTokens + m.OutputTokens + m.CachedTokens + m.ReasoningTokens
+}
+
+// projAgg 是 aggregate 内部按项目累计 token 的中间态
+type projAgg struct {
+	sessions int
+	messages int
+	byModel  map[string]*ModelTokens
+}
+
+func projectTotalTokens(p ProjectStat) int64 {
+	var t int64
+	for _, m := range p.ByModel {
+		t += totalTokens(m)
+	}
+	return t
 }
 
 func emptyReport(codexDir string) *DashboardReport {
