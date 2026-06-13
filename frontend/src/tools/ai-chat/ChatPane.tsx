@@ -51,9 +51,12 @@ import {
 import {
   detectFileKind,
   fileToFileBlock,
+  fileToImageBlock,
   formatFileSize,
+  imageSrc,
   isImageFile,
   MAX_FILES_PER_MESSAGE,
+  MAX_IMAGE_BYTES,
 } from './file-parsers'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/confirm'
@@ -74,31 +77,6 @@ const SUGGESTIONS = [
   '把下面这段 SQL 改成 PostgreSQL 兼容写法',
   '帮我润色一段产品介绍文案',
 ]
-
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5 MB
-
-/** 把图片 File 转 ImageBlock(base64,无 data: 前缀) */
-async function fileToImageBlock(file: File): Promise<ImageBlock> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const dataUrl = reader.result as string
-      const semiIdx = dataUrl.indexOf(';')
-      const commaIdx = dataUrl.indexOf(',')
-      const mime = semiIdx > 5 ? dataUrl.slice(5, semiIdx) : file.type || 'image/png'
-      const data = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : ''
-      resolve({ mimeType: mime, data })
-    }
-    reader.onerror = () => reject(new Error('读取文件失败'))
-    reader.readAsDataURL(file)
-  })
-}
-
-/** ImageBlock → 可放进 <img src> 的字符串 */
-function imageSrc(img: ImageBlock): string {
-  if (img.url) return img.url
-  return `data:${img.mimeType ?? 'image/png'};base64,${img.data ?? ''}`
-}
 
 /** 根据文件类型挑一个图标 */
 function fileIcon(name: string) {

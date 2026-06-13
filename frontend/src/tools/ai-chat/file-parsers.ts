@@ -10,11 +10,12 @@
  *
  * 不支持的扩展(.doc/.xls/.ppt 老格式)→ 抛错,提示用户另存为新格式
  */
-import type { FileBlock } from './types'
+import type { FileBlock, ImageBlock } from './types'
 
 export const MAX_PDF_BYTES = 20 * 1024 * 1024 // 20 MB
 export const MAX_OFFICE_BYTES = 15 * 1024 * 1024 // 15 MB
 export const MAX_TEXT_BYTES = 2 * 1024 * 1024 // 2 MB
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5 MB
 export const MAX_FILES_PER_MESSAGE = 4
 
 /** 文本/代码扩展白名单 — 直接 UTF-8 读取 */
@@ -60,6 +61,29 @@ export function detectFileKind(name: string): 'image' | 'pdf' | 'office' | 'text
 
 export function isImageFile(file: File): boolean {
   return file.type.startsWith('image/')
+}
+
+/** 把图片 File 转 ImageBlock(base64,无 data: 前缀) */
+export async function fileToImageBlock(file: File): Promise<ImageBlock> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      const semiIdx = dataUrl.indexOf(';')
+      const commaIdx = dataUrl.indexOf(',')
+      const mime = semiIdx > 5 ? dataUrl.slice(5, semiIdx) : file.type || 'image/png'
+      const data = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : ''
+      resolve({ mimeType: mime, data })
+    }
+    reader.onerror = () => reject(new Error('读取文件失败'))
+    reader.readAsDataURL(file)
+  })
+}
+
+/** ImageBlock → 可放进 <img src> 的字符串 */
+export function imageSrc(img: ImageBlock): string {
+  if (img.url) return img.url
+  return `data:${img.mimeType ?? 'image/png'};base64,${img.data ?? ''}`
 }
 
 /** 把 File 转 FileBlock。失败时抛错(由调用方提示用户) */

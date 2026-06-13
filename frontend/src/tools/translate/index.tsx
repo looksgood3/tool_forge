@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Clock,
   Copy,
+  Image as ImageIcon,
   Languages,
   Loader2,
   Paperclip,
@@ -19,12 +20,15 @@ import {
   StopAITranslate,
 } from '../../../wailsjs/go/main/App'
 import { EventsOn } from '../../../wailsjs/runtime/runtime'
-import type { Provider } from '@/tools/ai-chat/types'
+import type { ImageBlock, Provider } from '@/tools/ai-chat/types'
 import {
   fileToFileBlock,
+  fileToImageBlock,
   formatFileSize,
+  imageSrc,
   isImageFile,
   MAX_FILES_PER_MESSAGE,
+  MAX_IMAGE_BYTES,
 } from '@/tools/ai-chat/file-parsers'
 import { ChatModelPicker } from '@/tools/ai-chat/ChatModelPicker'
 import { ProviderAvatar } from '@/tools/ai-chat/ProviderAvatar'
@@ -45,6 +49,9 @@ import { detectAuto, detectByFranc, detectByLLM } from './detect'
 const EV_CHUNK = 'translate:chunk:'
 const EV_DONE = 'translate:done:'
 const EV_ERR = 'translate:error:'
+
+// multiImage 模式下一次最多贴几张图(单张模式忽略此值)
+const MAX_TRANSLATE_IMAGES = 6
 
 /** Wails 多返回值兼容:array / {0,1} / 直传字符串(只有一个值时) */
 function pickFirst(r: any): string {
@@ -75,11 +82,14 @@ export default function TranslatePage() {
   const [copied, setCopied] = useState(false)
   const [detectedHint, setDetectedHint] = useState('') // "检测到:中文" 之类
   const [pendingFile, setPendingFile] = useState<{ name: string; size: number } | null>(null)
+  const [pendingImages, setPendingImages] = useState<ImageBlock[]>([])
+  const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const sourceRef = useRef<HTMLTextAreaElement>(null)
   const targetRef = useRef<HTMLDivElement>(null)
   const sourceTextRef = useRef('') // 给 onDone 回调用的最新值
   sourceTextRef.current = source
+  const lastWasImageRef = useRef(false) // 本次翻译是否为贴图(给 onDone 写历史用)
 
   const s = useTranslateStore()
   const setMany = s.setMany
@@ -156,8 +166,8 @@ export default function TranslatePage() {
           await navigator.clipboard.writeText(finalText)
         } catch {}
       }
-      // 写历史
-      const sText = sourceTextRef.current.trim()
+      // 写历史(贴图翻译无源文本,用占位符,不存原图)
+      const sText = lastWasImageRef.current ? '🖼 贴图' : sourceTextRef.current.trim()
       if (sText && finalText.trim()) {
         useTranslateStore.getState().pushHistory({
           source: sText,
@@ -194,7 +204,9 @@ export default function TranslatePage() {
 
   const onTranslate = async () => {
     const text = source.trim()
-    if (!text) return
+    const hasImage = pendingImages.length > 0
+    if (!text && !hasImage) return
+    lastWasImageRef.current = hasImage
     // 校验当前选中的 provider/model 仍然有效(可能 localStorage 留了旧 provider 已被禁用)
     let useProviderId = s.providerId
     let useModelId = s.modelId
@@ -221,9 +233,10 @@ export default function TranslatePage() {
     setDetectedHint('')
 
     // —— 解析最终目标语言(双向 + auto 检测)
+    // 贴图翻译:图里没有可供检测的纯文本,跳过源语言检测与双向反转,直接译到目标语言
     let finalTargetId = s.targetLang
     let finalSourceId = s.sourceLang
-    if (finalSourceId === AUTO_DETECT_ID) {
+    if (!hasImage && finalSourceId === AUTO_DETECT_ID) {
       let detected: ReturnType<typeof findLang> | undefined
       if (s.detectMethod === 'algorithm') detected = await detectByFranc(text)
       else if (s.detectMethod === 'llm')
@@ -234,8 +247,8 @@ export default function TranslatePage() {
         setDetectedHint(`检测到:${detected.label}`)
       }
     }
-    // 双向:源已是目标语言 → 反向(取上一次的 source)
-    if (s.bidirectional && finalSourceId === finalTargetId) {
+    // 双向:源已是目标语言 → 反向(取上一次的 source);贴图模式不参与
+    if (!hasImage && s.bidirectional && finalSourceId === finalTargetId) {
       // 简单策略:目标默认改成英文(如目标也是 en,改成中文)
       finalTargetId = finalTargetId === 'en' ? 'zh' : 'en'
     }
@@ -252,6 +265,8 @@ export default function TranslatePage() {
       text,
       targetLang: tgtLang.name,
       prompt: s.prompt,
+      // 贴图翻译:带上图片,后端走视觉模型(图优先,忽略 text)
+      images: hasImage ? pendingImages : undefined,
       // wails 生成的 ts class 还有这两个静态方法,但运行时直接传普通对象就行
     } as any)) as any
     // wails 多返回值通常是 array;兜底处理 object {0,1} 与字符串
@@ -299,6 +314,69 @@ export default function TranslatePage() {
     setTarget('')
     setDetectedHint('')
     setPendingFile(null)
+    setPendingImages([])
+  }
+
+  // —— 贴图:把图片 File 收进 pendingImages(单张模式替换,多张模式累积到上限)
+  const ingestImages = async (files: FileList | File[]) => {
+    const imgs = Array.from(files).filter(isImageFile)
+    if (imgs.length === 0) return
+    const blocks: ImageBlock[] = []
+    const errs: string[] = []
+    for (const f of imgs) {
+      if (f.size > MAX_IMAGE_BYTES) {
+        errs.push(`「${f.name || '图片'}」超过 5 MB`)
+        continue
+      }
+      try {
+        blocks.push(await fileToImageBlock(f))
+      } catch (e: any) {
+        errs.push(`「${f.name || '图片'}」${e?.message ?? e}`)
+      }
+    }
+    if (blocks.length > 0) {
+      setPendingImages((prev) =>
+        s.multiImage
+          ? [...prev, ...blocks].slice(0, MAX_TRANSLATE_IMAGES)
+          : [blocks[blocks.length - 1]], // 单张:用最后一张替换
+      )
+    }
+    if (errs.length > 0) {
+      await dialog({ title: '部分图片无法添加', message: errs.join('\n'), confirmLabel: '知道了' })
+    }
+  }
+
+  // Ctrl+V 粘贴图片(纯文本粘贴走默认)
+  const onSourcePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    const files: File[] = []
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]
+      if (it.kind === 'file') {
+        const f = it.getAsFile()
+        if (f && isImageFile(f)) files.push(f)
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault()
+      void ingestImages(files)
+    }
+  }
+
+  // 拖拽图片到源面板
+  const onSourceDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    setDragOver(false)
+    if (e.dataTransfer.files.length === 0) return
+    const imgs = Array.from(e.dataTransfer.files).filter(isImageFile)
+    if (imgs.length > 0) {
+      e.preventDefault()
+      void ingestImages(imgs)
+    }
+  }
+
+  const removePendingImage = (idx: number) => {
+    setPendingImages((prev) => prev.filter((_, i) => i !== idx))
   }
 
   // —— 文件上传:抽文本到 source
@@ -425,7 +503,27 @@ export default function TranslatePage() {
       {/* 双面板:两张等高卡片,中间留 gap,外层加微弱底色衬托 */}
       <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 bg-secondary/20 p-3">
         {/* —— 源面板 —— */}
-        <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+        <div
+          className={cn(
+            'relative flex min-h-0 flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors',
+            dragOver ? 'border-info ring-1 ring-info' : 'border-border',
+          )}
+          onDragOver={(e) => {
+            if (Array.from(e.dataTransfer.items).some((it) => it.kind === 'file')) {
+              e.preventDefault()
+              setDragOver(true)
+            }
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget === e.target) setDragOver(false)
+          }}
+          onDrop={onSourceDrop}
+        >
+          {dragOver && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-info/10 text-sm font-medium text-info">
+              松开以添加图片
+            </div>
+          )}
           {/* 卡片头:语言徽标 + 字数 */}
           <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 px-3 text-xs">
             <Flag code={sourceFlagCode} />
@@ -461,12 +559,41 @@ export default function TranslatePage() {
             </div>
           )}
 
+          {pendingImages.length > 0 && (
+            <div className="space-y-1.5 border-b border-border/60 bg-secondary/30 px-3 py-2">
+              <div className="flex flex-wrap gap-2">
+                {pendingImages.map((img, i) => (
+                  <div key={i} className="group/thumb relative">
+                    <img
+                      src={imageSrc(img)}
+                      alt=""
+                      className="h-16 w-16 rounded-md border border-border object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePendingImage(i)}
+                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-background/90 text-muted-foreground shadow ring-1 ring-border transition-colors hover:text-destructive"
+                      title="移除"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-1 text-[11px] text-info">
+                <ImageIcon className="h-3 w-3 shrink-0" />
+                贴图翻译需选支持视觉的模型
+              </div>
+            </div>
+          )}
+
           <textarea
             ref={sourceRef}
             value={source}
             onChange={(e) => setSource(e.target.value)}
             onKeyDown={onSourceKeyDown}
-            placeholder="输入或粘贴要翻译的文本… (Enter 翻译 · Shift/Ctrl+Enter 换行)"
+            onPaste={onSourcePaste}
+            placeholder="输入文本,或 Ctrl+V 粘贴 / 拖入图片… (Enter 翻译 · Shift/Ctrl+Enter 换行)"
             className="min-h-0 flex-1 resize-none bg-transparent p-4 text-sm leading-relaxed outline-none"
           />
 
@@ -488,14 +615,14 @@ export default function TranslatePage() {
               onChange={(e) => void onPickFiles(e)}
             />
             <div className="flex items-center gap-1">
-              {(source || target) && !streaming && (
+              {(source || target || pendingImages.length > 0) && !streaming && (
                 <Button onClick={onClear} size="sm" variant="ghost">
                   清空
                 </Button>
               )}
               <Button
                 onClick={() => (streaming ? void onStop() : void onTranslate())}
-                disabled={!streaming && !source.trim()}
+                disabled={!streaming && !source.trim() && pendingImages.length === 0}
                 size="sm"
                 variant={streaming ? 'outline' : 'default'}
                 className="min-w-[88px]"

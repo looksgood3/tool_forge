@@ -80,6 +80,15 @@ export function SettingsDialog({
 
           <div className="my-2 h-px bg-border" />
 
+          <ToggleRow
+            label="贴图翻译允许多张"
+            hint="关:每次贴/拖图替换上一张;开:可累积多张(最多 6 张)"
+            value={s.multiImage}
+            onChange={(v) => set({ multiImage: v })}
+          />
+
+          <div className="my-2 h-px bg-border" />
+
           <button
             type="button"
             onClick={() => {

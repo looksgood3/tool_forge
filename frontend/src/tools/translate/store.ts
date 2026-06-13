@@ -14,6 +14,7 @@ export interface TranslateSettings {
   detectMethod: DetectMethod
   bidirectional: boolean
   prompt: string // 空 = 用后端默认
+  multiImage: boolean // 贴图翻译:允许一次贴多张图(默认 false=单张,新图替换旧图)
 }
 
 export interface TranslateHistoryItem {
@@ -51,6 +52,7 @@ export const useTranslateStore = create<TranslateState>()(
       detectMethod: 'auto',
       bidirectional: false,
       prompt: '', // 空走后端默认
+      multiImage: false,
       history: [],
 
       setMany: (patch) => set(patch),
