@@ -12,7 +12,7 @@ import type { codexinsight } from '../../../wailsjs/go/models'
 import { formatDateTime } from './lib/format'
 
 type ConfigFile = codexinsight.ConfigFile
-type FileKey = 'AGENTS.md' | 'config.toml'
+type FileKey = 'AGENTS.md' | 'config.toml' | 'rules/default.rules'
 
 interface Props {
   reloadToken: number
@@ -35,6 +35,12 @@ export function Config({ reloadToken }: Props) {
           onClick={() => setActive('config.toml')}
           icon={<Settings className="h-3.5 w-3.5" />}
           label="config.toml"
+        />
+        <FileTabButton
+          active={active === 'rules/default.rules'}
+          onClick={() => setActive('rules/default.rules')}
+          icon={<FileText className="h-3.5 w-3.5" />}
+          label="rules"
         />
       </div>
       <FileEditor key={`${active}-${reloadToken}`} fileName={active} />

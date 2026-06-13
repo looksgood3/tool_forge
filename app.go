@@ -677,6 +677,33 @@ func (a *App) DeleteClaudeSkillFile(skill, relPath string) error {
 	return claudeinsight.DeleteSkillFile("", skill, relPath)
 }
 
+// ---- Claude 项目记忆 (~/.claude/projects/<proj>/memory) ----
+
+// ListClaudeMemoryProjects 列出所有含 memory/ 笔记的项目。
+func (a *App) ListClaudeMemoryProjects() (*claudeinsight.MemoryProjectList, error) {
+	return claudeinsight.ListMemoryProjects("")
+}
+
+// ListClaudeMemoryNotes 列出某项目 memory 下的所有笔记文件。
+func (a *App) ListClaudeMemoryNotes(project string) (*claudeinsight.MemoryNoteList, error) {
+	return claudeinsight.ListMemoryNotes("", project)
+}
+
+// ReadClaudeMemoryNote 读取一条记忆笔记。
+func (a *App) ReadClaudeMemoryNote(project, relPath string) (*claudeinsight.MemoryNoteContent, error) {
+	return claudeinsight.ReadMemoryNote("", project, relPath)
+}
+
+// WriteClaudeMemoryNote 写入 / 覆盖一条记忆笔记。
+func (a *App) WriteClaudeMemoryNote(project, relPath, content string) error {
+	return claudeinsight.WriteMemoryNote("", project, relPath, content)
+}
+
+// DeleteClaudeMemoryNote 删除一条记忆笔记或空目录。
+func (a *App) DeleteClaudeMemoryNote(project, relPath string) error {
+	return claudeinsight.DeleteMemoryNote("", project, relPath)
+}
+
 // ---- Claude 配置文件（settings.json / CLAUDE.md）----
 
 func (a *App) ReadClaudeConfigFile(name string) (*claudeinsight.ConfigFile, error) {
@@ -741,22 +768,41 @@ func (a *App) DeleteCodexSession(filePath string) error {
 	return codexinsight.DeleteSession("", filePath)
 }
 
-// ---- Codex Memories ----
+// ---- Codex Skills (~/.codex/skills) ----
 
-func (a *App) ListCodexMemories() (*codexinsight.MemoryFileList, error) {
-	return codexinsight.ListMemories("")
+// ListCodexSkills 列出 ~/.codex/skills 下所有 skill。
+func (a *App) ListCodexSkills() (*codexinsight.SkillList, error) {
+	return codexinsight.ListSkills("")
 }
 
-func (a *App) ReadCodexMemory(relPath string) (*codexinsight.MemoryFileContent, error) {
-	return codexinsight.ReadMemory("", relPath)
+// ListCodexSkillFiles 列出某个 skill 目录下的所有文件。
+func (a *App) ListCodexSkillFiles(skill string) (*codexinsight.SkillFileList, error) {
+	return codexinsight.ListSkillFiles("", skill)
 }
 
-func (a *App) WriteCodexMemory(relPath, content string) error {
-	return codexinsight.WriteMemory("", relPath, content)
+// ReadCodexSkillFile 读取 skill 下一个文件的内容。
+func (a *App) ReadCodexSkillFile(skill, relPath string) (*codexinsight.SkillFileContent, error) {
+	return codexinsight.ReadSkillFile("", skill, relPath)
 }
 
-func (a *App) DeleteCodexMemory(relPath string) error {
-	return codexinsight.DeleteMemory("", relPath)
+// WriteCodexSkillFile 写入 / 覆盖 skill 下一个文件。
+func (a *App) WriteCodexSkillFile(skill, relPath, content string) error {
+	return codexinsight.WriteSkillFile("", skill, relPath, content)
+}
+
+// CreateCodexSkill 新建一个 skill 目录,并写入默认 SKILL.md 模板。
+func (a *App) CreateCodexSkill(name string) error {
+	return codexinsight.CreateSkill("", name)
+}
+
+// DeleteCodexSkill 删除整个 skill 目录。
+func (a *App) DeleteCodexSkill(name string) error {
+	return codexinsight.DeleteSkill("", name)
+}
+
+// DeleteCodexSkillFile 删除 skill 下某个文件或空目录。
+func (a *App) DeleteCodexSkillFile(skill, relPath string) error {
+	return codexinsight.DeleteSkillFile("", skill, relPath)
 }
 
 // ---- Codex 配置文件(AGENTS.md / config.toml) ----
@@ -767,12 +813,6 @@ func (a *App) ReadCodexConfigFile(name string) (*codexinsight.ConfigFile, error)
 
 func (a *App) WriteCodexConfigFile(name, content string) error {
 	return codexinsight.WriteConfigFile("", name, content)
-}
-
-// ---- Codex 全局历史 ----
-
-func (a *App) ListCodexHistory(query string) (*codexinsight.HistoryResult, error) {
-	return codexinsight.ListHistory("", query)
 }
 
 // ================ Clipboard ================

@@ -12,6 +12,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { CostCard } from '@/components/tool/CostCard'
 import { BuildCodexDashboard } from '../../../wailsjs/go/main/App'
 import type { codexinsight } from '../../../wailsjs/go/models'
 import {
@@ -71,6 +72,7 @@ export function Dashboard({ reloadToken }: Props) {
         <TopProjectsCard rows={report.top_projects} />
         <TokensByModelTable rows={report.tokens_by_model} />
       </div>
+      <CostCard kind="codex" models={report.tokens_by_model} />
       <LongestSessionBanner s={report.longest_session} />
       <RecentSessionsList list={report.recent_sessions} />
     </div>

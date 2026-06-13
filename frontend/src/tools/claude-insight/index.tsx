@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   BarChart3,
+  Brain,
   MessageSquare,
   RefreshCw,
   Search,
@@ -14,10 +15,11 @@ import { meta } from './meta'
 import { Dashboard } from './Dashboard'
 import { Sessions } from './Sessions'
 import { Skills } from './Skills'
+import { Memory } from './Memory'
 import { Search as SearchView } from './Search'
 import { Config } from './Config'
 
-type Tab = 'dashboard' | 'sessions' | 'search' | 'skills' | 'config'
+type Tab = 'dashboard' | 'sessions' | 'search' | 'skills' | 'memory' | 'config'
 
 export default function ClaudeInsightTool() {
   const [tab, setTab] = useState<Tab>('dashboard')
@@ -56,6 +58,12 @@ export default function ClaudeInsightTool() {
             label="Skills"
           />
           <TabButton
+            active={tab === 'memory'}
+            onClick={() => setTab('memory')}
+            icon={<Brain className="h-3.5 w-3.5" />}
+            label="记忆"
+          />
+          <TabButton
             active={tab === 'config'}
             onClick={() => setTab('config')}
             icon={<Settings className="h-3.5 w-3.5" />}
@@ -72,6 +80,7 @@ export default function ClaudeInsightTool() {
       {tab === 'sessions' && <Sessions reloadToken={reloadToken} />}
       {tab === 'search' && <SearchView />}
       {tab === 'skills' && <Skills reloadToken={reloadToken} />}
+      {tab === 'memory' && <Memory reloadToken={reloadToken} />}
       {tab === 'config' && <Config reloadToken={reloadToken} />}
     </ToolShell>
   )

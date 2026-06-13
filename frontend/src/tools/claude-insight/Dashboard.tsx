@@ -12,6 +12,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { CostCard } from '@/components/tool/CostCard'
 import { BuildClaudeDashboard } from '../../../wailsjs/go/main/App'
 import type { claudeinsight } from '../../../wailsjs/go/models'
 import {
@@ -69,6 +70,7 @@ export function Dashboard({ reloadToken }: DashboardProps) {
       </div>
       <CalendarHeatmap buckets={report.calendar} />
       <TokensByModelTable rows={report.tokens_by_model} />
+      <CostCard kind="claude" models={report.tokens_by_model} />
       <LongestSessionBanner s={report.longest_session} />
       <RecentSessionsList list={report.recent_sessions} />
     </div>

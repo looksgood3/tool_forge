@@ -1,12 +1,11 @@
 import { useState } from 'react'
 import {
   BarChart3,
-  Brain,
-  History as HistoryIcon,
   MessageSquare,
   RefreshCw,
   Search,
   Settings,
+  Sparkles,
 } from 'lucide-react'
 import { ToolShell } from '@/components/tool/ToolShell'
 import { Button } from '@/components/ui/button'
@@ -15,11 +14,10 @@ import { meta } from './meta'
 import { Dashboard } from './Dashboard'
 import { Sessions } from './Sessions'
 import { Search as SearchView } from './Search'
-import { History } from './History'
-import { Memories } from './Memories'
+import { Skills } from './Skills'
 import { Config } from './Config'
 
-type Tab = 'dashboard' | 'sessions' | 'search' | 'history' | 'memories' | 'config'
+type Tab = 'dashboard' | 'sessions' | 'search' | 'skills' | 'config'
 
 export default function CodexInsightTool() {
   const [tab, setTab] = useState<Tab>('dashboard')
@@ -52,16 +50,10 @@ export default function CodexInsightTool() {
             label="搜索"
           />
           <TabButton
-            active={tab === 'history'}
-            onClick={() => setTab('history')}
-            icon={<HistoryIcon className="h-3.5 w-3.5" />}
-            label="历史"
-          />
-          <TabButton
-            active={tab === 'memories'}
-            onClick={() => setTab('memories')}
-            icon={<Brain className="h-3.5 w-3.5" />}
-            label="Memories"
+            active={tab === 'skills'}
+            onClick={() => setTab('skills')}
+            icon={<Sparkles className="h-3.5 w-3.5" />}
+            label="Skills"
           />
           <TabButton
             active={tab === 'config'}
@@ -79,8 +71,7 @@ export default function CodexInsightTool() {
       {tab === 'dashboard' && <Dashboard reloadToken={reloadToken} />}
       {tab === 'sessions' && <Sessions reloadToken={reloadToken} />}
       {tab === 'search' && <SearchView />}
-      {tab === 'history' && <History />}
-      {tab === 'memories' && <Memories reloadToken={reloadToken} />}
+      {tab === 'skills' && <Skills reloadToken={reloadToken} />}
       {tab === 'config' && <Config reloadToken={reloadToken} />}
     </ToolShell>
   )

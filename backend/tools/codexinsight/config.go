@@ -10,8 +10,9 @@ import (
 
 // 可读写的根目录下的顶层配置文件白名单。只允许这些文件名,防止被用作任意文件读写。
 var allowedConfigFiles = map[string]bool{
-	"AGENTS.md":   true,
-	"config.toml": true,
+	"AGENTS.md":           true,
+	"config.toml":         true,
+	"rules/default.rules": true,
 }
 
 // ConfigFile 代表一个配置文件的内容与元信息
@@ -69,12 +70,14 @@ func WriteConfigFile(codexDir, name, content string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
 	const maxWrite = 2 * 1024 * 1024
 	if len(content) > maxWrite {
 		return fmt.Errorf("内容过大,超过 2 MB")
 	}
-	return os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644)
+	target := filepath.Join(dir, name)
+	// 允许子目录配置(如 rules/default.rules):确保父目录存在
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(target, []byte(content), 0o644)
 }
