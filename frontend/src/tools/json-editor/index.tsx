@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
   ChevronsDownUp,
   ChevronsUpDown,
   Copy,
@@ -19,6 +20,7 @@ import {
   escapeJson,
   formatJson,
   minifyJson,
+  sortJsonKeys,
   unescapeJson,
   validate,
 } from './logic'
@@ -92,7 +94,7 @@ export default function JsonEditor() {
         setNotice('')
       }}
       actions={
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex items-center gap-1.5">
           <input
             ref={fileInputRef}
             type="file"
@@ -104,14 +106,7 @@ export default function JsonEditor() {
               e.target.value = ''
             }}
           />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload className="h-3.5 w-3.5" />
-            导入
-          </Button>
+          {/* 主变换:常用一键到位 */}
           <Button
             variant="outline"
             size="sm"
@@ -128,56 +123,53 @@ export default function JsonEditor() {
           >
             压缩
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => apply(escapeJson)}
+          {/* 次要变换收进「更多」 */}
+          <MoreMenu
             disabled={!input}
-          >
-            转义
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => apply(unescapeJson)}
-            disabled={!input}
-          >
-            反转义
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
+            items={[
+              {
+                label: 'Key 排序',
+                title: '按 key 字母序递归排序后格式化(数组顺序不变)',
+                onClick: () => apply((s) => sortJsonKeys(s, 2)),
+              },
+              { label: '转义', onClick: () => apply(escapeJson) },
+              { label: '反转义', onClick: () => apply(unescapeJson) },
+            ]}
+          />
+
+          <span className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+
+          {/* I/O / 视图:图标化(hover 有提示) */}
+          <IconButton title="导入 .json / .txt" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="h-3.5 w-3.5" />
+          </IconButton>
+          <IconButton
+            title={folded ? '展开全部节点' : '折叠全部节点'}
             onClick={toggleFold}
             disabled={!input}
-            title={folded ? '把全部节点展开' : '把全部节点折叠'}
           >
             {folded ? (
               <ChevronsUpDown className="h-3.5 w-3.5" />
             ) : (
               <ChevronsDownUp className="h-3.5 w-3.5" />
             )}
-            {folded ? '展开' : '折叠'}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
+          </IconButton>
+          <IconButton
+            title="复制全部"
             onClick={() => navigator.clipboard.writeText(input)}
             disabled={!input}
           >
             <Copy className="h-3.5 w-3.5" />
-            复制
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
+          </IconButton>
+          <IconButton
+            title="导出为 .json"
             onClick={() =>
               downloadText(input, 'data.json', 'application/json;charset=utf-8')
             }
             disabled={!input}
           >
             <Download className="h-3.5 w-3.5" />
-            导出
-          </Button>
+          </IconButton>
         </div>
       }
     >
@@ -215,6 +207,80 @@ export default function JsonEditor() {
         )}
       </div>
     </ToolShell>
+  )
+}
+
+// IconButton 工具栏里的纯图标按钮(I/O / 视图),靠 title 做悬停提示。
+function IconButton({
+  title,
+  onClick,
+  disabled,
+  children,
+}: {
+  title: string
+  onClick: () => void
+  disabled?: boolean
+  children: ReactNode
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="w-8 shrink-0 px-0"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {children}
+    </Button>
+  )
+}
+
+interface MoreItem {
+  label: string
+  title?: string
+  onClick: () => void
+}
+
+// MoreMenu 收纳次要变换的轻量下拉(点击外部自动关闭)。
+function MoreMenu({ items, disabled }: { items: MoreItem[]; disabled?: boolean }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <Button variant="outline" size="sm" disabled={disabled} onClick={() => setOpen((v) => !v)}>
+        更多
+        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
+      </Button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 min-w-[112px] overflow-hidden rounded-md border border-border bg-popover py-1 shadow-md">
+          {items.map((it) => (
+            <button
+              key={it.label}
+              title={it.title}
+              onClick={() => {
+                it.onClick()
+                setOpen(false)
+              }}
+              className="block w-full px-3 py-1.5 text-left text-xs hover:bg-accent"
+            >
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

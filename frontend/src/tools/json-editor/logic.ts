@@ -8,6 +8,25 @@ export function minifyJson(input: string): string {
   return JSON.stringify(parsed)
 }
 
+// sortValue 递归把对象的 key 按字母序重排;数组顺序保持不变(数组有序,排了会改变语义)。
+function sortValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortValue)
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(obj).sort()) {
+      out[key] = sortValue(obj[key])
+    }
+    return out
+  }
+  return value
+}
+
+// sortJsonKeys 解析后递归按 key 排序,再格式化输出(等价于 jq -S / json.dumps(sort_keys=True))。
+export function sortJsonKeys(input: string, indent = 2): string {
+  return JSON.stringify(sortValue(JSON.parse(input)), null, indent)
+}
+
 export function escapeJson(input: string): string {
   return JSON.stringify(input).slice(1, -1)
 }
