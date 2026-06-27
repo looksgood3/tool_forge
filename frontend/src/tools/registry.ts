@@ -118,6 +118,9 @@ import { meta as netToolsMeta } from './net-tools/meta'
 import ImageMerge from './image-merge'
 import { meta as imageMergeMeta } from './image-merge/meta'
 
+import NetEnvCheck from './netenvcheck'
+import { meta as netEnvCheckMeta } from './netenvcheck/meta'
+
 export interface ToolEntry {
   meta: ToolMeta
   Component: ComponentType
@@ -163,6 +166,7 @@ export const tools: ToolEntry[] = [
   { meta: httpTestMeta, Component: HttpTest },
   { meta: netToolsMeta, Component: NetTools },
   { meta: imageMergeMeta, Component: ImageMerge },
+  { meta: netEnvCheckMeta, Component: NetEnvCheck },
 ]
 
 export const toolRegistry: ToolMeta[] = tools.map((t) => t.meta)

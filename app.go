@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -23,6 +25,7 @@ import (
 	"tool_forge/backend/tools/filehash"
 	"tool_forge/backend/tools/forensic"
 	"tool_forge/backend/tools/httptest"
+	"tool_forge/backend/tools/netenvcheck"
 	"tool_forge/backend/tools/netscan"
 	"tool_forge/backend/tools/outlookmail"
 	"tool_forge/backend/tools/providerswitch"
@@ -64,6 +67,7 @@ func NewApp() *App {
 		clip = nil
 	}
 	// 全局热键 manager:声明所有可绑定的 action,用户可在 Profile → 快捷键里自定义
+
 	hkConfig := ""
 	if home, err := os.UserHomeDir(); err == nil {
 		hkConfig = filepath.Join(home, ".toolforge", "hotkeys.json")
@@ -407,6 +411,29 @@ func (a *App) LookupWhoisInfo(domain string) netscan.WhoisResult {
 // ScanPorts 并发探测端口列表是否开放
 func (a *App) ScanPorts(host string, ports []int, timeoutMs int) netscan.PortResult {
 	return netscan.ScanPorts(host, ports, timeoutMs)
+}
+
+// ================ 网络环境体检 ================
+
+// RunNetEnvCheck 执行一次网络环境体检(出口 IP/风险、双路对比、WebRTC/DNS 泄漏、一致性、评分)。
+// 浏览器侧信号(WebView 出口 IP、WebRTC 候选、浏览器时区/语言/UA)由前端采集后通过 input.Browser 传入。
+func (a *App) RunNetEnvCheck(input netenvcheck.Input) netenvcheck.Report {
+	return netenvcheck.Run(a.ctx, input)
+}
+
+// ExportNetEnvReport 把体检结果导出为 md/json/html 并弹原生保存对话框。返回保存路径,取消返回空串。
+func (a *App) ExportNetEnvReport(report netenvcheck.Report, format string) (string, error) {
+	content, ext, err := netenvcheck.ExportReport(report, format)
+	if err != nil {
+		return "", err
+	}
+	opts := system.PickFileOptions{
+		Title:           "保存体检报告",
+		DefaultFilename: "网络环境体检." + ext,
+		Extensions:      []string{"." + ext},
+		DisplayName:     strings.ToUpper(ext) + " 文件",
+	}
+	return system.SaveBytesToFile(a.ctx, opts, base64.StdEncoding.EncodeToString([]byte(content)))
 }
 
 // ResetAllData 清空整个 ~/.toolforge 目录,前端在调用前应清自家 localStorage,
