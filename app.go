@@ -34,7 +34,7 @@ import (
 )
 
 // AppVersion 应用版本号，随 wails.json 同步维护
-const AppVersion = "0.2.3"
+const AppVersion = "0.2.4"
 
 // AppInfo 应用元信息
 type AppInfo struct {
