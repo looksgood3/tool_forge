@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strings"
 )
@@ -184,8 +185,11 @@ func collectGPSearchCards(root any, urlFreq map[string]int) []gpCard {
 // uniqueAssign 把 candidates 一对一分给 pkgs：按 (pkg, candidate) 对的 prefix 长度
 // 从大到小贪心匹配，每个 pkg 和 candidate 都只用一次。要求 prefix >= 2 才算有效。
 func uniqueAssign(pkgs, candidates []leafRef) map[int]leafRef {
+	// 必须返回非 nil map:调用方会往返回值里写入(iconMap[idx]=v),
+	// 候选为空时若返回 nil,写入会 panic "assignment to entry in nil map"。
+	assign := map[int]leafRef{}
 	if len(pkgs) == 0 || len(candidates) == 0 {
-		return nil
+		return assign
 	}
 	type edge struct {
 		p, c   int
@@ -213,7 +217,6 @@ func uniqueAssign(pkgs, candidates []leafRef) map[int]leafRef {
 	}
 	usedP := make(map[int]bool)
 	usedC := make(map[int]bool)
-	assign := map[int]leafRef{}
 	for _, e := range edges {
 		if usedP[e.p] || usedC[e.c] {
 			continue
@@ -259,8 +262,10 @@ func walkCollectLeaves(root any, pred func(string) bool) []leafRef {
 }
 
 // walkCollectIconLeaves 专门找"看起来像 App 图标"的 URL，返回两个桶：
-//   preferred: size 正好是 [0, 0] —— featured 卡的真图标（featured 卡里还混有 [W,W] 截图）
-//   normal:    size 是其他方形 [W,W] —— 普通卡的真图标（[512,512] 为主）
+//
+//	preferred: size 正好是 [0, 0] —— featured 卡的真图标（featured 卡里还混有 [W,W] 截图）
+//	normal:    size 是其他方形 [W,W] —— 普通卡的真图标（[512,512] 为主）
+//
 // 共享资源（分级徽章等）通过频次和 rating keyword 过滤。
 func walkCollectIconLeaves(root any, urlFreq map[string]int) (preferred, normal []leafRef) {
 
@@ -303,9 +308,10 @@ func walkCollectIconLeaves(root any, urlFreq map[string]int) (preferred, normal 
 					if !strings.Contains(urlStr, gpIconHostFrag) {
 						return
 					}
-					// 真·App icon 在 ds:4 里恰好出现 1 次；共享资源（rating pictogram、
-					// dev 默认头像、featured 卡的重复 preview）都 >= 2 次。严格按此过滤。
-					if urlFreq[urlStr] != 1 {
+					// 不再用 urlFreq==1 过滤:GP 改版后热门 App 的图标会在多个卡片(相似推荐等)
+					// 重复出现(freq 远大于 1),旧规则会把真图标全刷掉导致没图标。改为只靠
+					// "方形 + 树上邻近度"选图标(见 collectGPSearchCards),这里仅挡掉过小的徽章像素图。
+					if w > 0 && w < 32 {
 						return
 					}
 					// 检查近邻是否有 rating 关键词
@@ -417,15 +423,32 @@ func commonPrefixLen(a, b []any) int {
 	return n
 }
 
-// sameNode 引用相等：由于我们存的是同一棵 JSON 树里的实例，用指针/地址比
+// sameNode 判断两个路径节点是否是同一棵 JSON 树里的同一实例(引用相等)。
+//
+// 关键:绝不能对 a、b 直接用 ==。路径节点是容器(数组/对象),当两者动态类型都是
+// map[string]any 时,a == b 会触发运行时 panic:
+//
+//	"comparing uncomparable type map[string]interface {}"
+//
+// 这正是"只勾 Google Play 搜索某些词整个 app 崩溃"的根因(裸 goroutine 里无 recover)。
+// 因此这里按类型分派,只用引用相等比较 slice / map。
 func sameNode(a, b any) bool {
-	// 对 []any 和 map[string]any，interface 内部指针相同即为同一节点
-	arrA, okA := a.([]any)
-	arrB, okB := b.([]any)
-	if okA && okB {
-		return len(arrA) == len(arrB) && &arrA[0] == nil && &arrB[0] == nil || sliceHeaderEq(arrA, arrB)
+	switch av := a.(type) {
+	case []any:
+		bv, ok := b.([]any)
+		return ok && sliceHeaderEq(av, bv)
+	case map[string]any:
+		bv, ok := b.(map[string]any)
+		return ok && mapHeaderEq(av, bv)
+	default:
+		// 路径节点只会是容器;其它类型一律视为不同,避免对不可比较类型用 ==
+		return false
 	}
-	return a == b
+}
+
+// mapHeaderEq 判断两个 map 是否引用同一底层实例(map 是引用类型,同实例 → 同指针)
+func mapHeaderEq(a, b map[string]any) bool {
+	return reflect.ValueOf(a).Pointer() == reflect.ValueOf(b).Pointer()
 }
 
 // sliceHeaderEq 判断两个 []any 是否引用同一底层数组（同一位置 + 同长度）

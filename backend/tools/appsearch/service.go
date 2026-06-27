@@ -3,6 +3,7 @@ package appsearch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -69,17 +70,11 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (*SearchRespons
 		go func() {
 			defer wg.Done()
 			status := SourceStatus{Source: src}
-			results, err := s.runSource(ctx, src, keyword, country, req)
-			if err != nil {
-				status.Error = err.Error()
-			} else {
-				// 每源截断到 limit;Count 反映截断后的真实数量
-				if len(results) > limit {
-					results = results[:limit]
-				}
-				status.OK = true
-				status.Count = len(results)
-			}
+			// 关键:每个源都兜住 panic。任一源解析出错只记为该源失败,
+			// 绝不能让裸 goroutine 里的 panic 掀翻整个 app。
+			results := runSourceSafe(func() ([]SearchResultItem, error) {
+				return s.runSource(ctx, src, keyword, country, req)
+			}, &status, limit)
 			mu.Lock()
 			statuses = append(statuses, status)
 			items = append(items, results...)
@@ -95,6 +90,31 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (*SearchRespons
 		Items:    items,
 		Statuses: statuses,
 	}, nil
+}
+
+// runSourceSafe 执行单个源并兜住 panic:成功填 status.OK/Count 并返回结果(截断到 limit),
+// 出错或 panic 填 status.Error 返回 nil。保证任何源的异常都不会冒泡到 goroutine 顶层把 app 搞崩。
+func runSourceSafe(run func() ([]SearchResultItem, error), status *SourceStatus, limit int) (out []SearchResultItem) {
+	defer func() {
+		if r := recover(); r != nil {
+			status.OK = false
+			status.Count = 0
+			status.Error = fmt.Sprintf("源处理异常: %v", r)
+			out = nil
+		}
+	}()
+	results, err := run()
+	if err != nil {
+		status.Error = err.Error()
+		return nil
+	}
+	// 每源截断到 limit;Count 反映截断后的真实数量
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	status.OK = true
+	status.Count = len(results)
+	return results
 }
 
 func (s *Service) runSource(ctx context.Context, src SourceID, keyword, country string, req SearchRequest) ([]SearchResultItem, error) {
