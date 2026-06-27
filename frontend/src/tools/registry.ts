@@ -121,6 +121,9 @@ import { meta as imageMergeMeta } from './image-merge/meta'
 import NetEnvCheck from './netenvcheck'
 import { meta as netEnvCheckMeta } from './netenvcheck/meta'
 
+import LlmProxy from './llm-proxy'
+import { meta as llmProxyMeta } from './llm-proxy/meta'
+
 export interface ToolEntry {
   meta: ToolMeta
   Component: ComponentType
@@ -167,6 +170,7 @@ export const tools: ToolEntry[] = [
   { meta: netToolsMeta, Component: NetTools },
   { meta: imageMergeMeta, Component: ImageMerge },
   { meta: netEnvCheckMeta, Component: NetEnvCheck },
+  { meta: llmProxyMeta, Component: LlmProxy },
 ]
 
 export const toolRegistry: ToolMeta[] = tools.map((t) => t.meta)

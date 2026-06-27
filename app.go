@@ -25,6 +25,7 @@ import (
 	"tool_forge/backend/tools/filehash"
 	"tool_forge/backend/tools/forensic"
 	"tool_forge/backend/tools/httptest"
+	"tool_forge/backend/tools/llmproxy"
 	"tool_forge/backend/tools/netenvcheck"
 	"tool_forge/backend/tools/netscan"
 	"tool_forge/backend/tools/outlookmail"
@@ -57,6 +58,7 @@ type App struct {
 	api       *apiserver.Server
 	outlook   *outlookmail.Service
 	filehash  *filehash.Service
+	llmproxy  *llmproxy.Server
 }
 
 // NewApp creates a new App application struct
@@ -91,6 +93,8 @@ func NewApp() *App {
 	api.Register(forensic.NewStreamHandler(fns))
 	// Outlook 邮箱管理:加密存储 + 定时刷新 worker
 	outlk, _ := outlookmail.New()
+	// LLM 透明代理 + 日志:打开 SQLite 存储,读配置(startup 里按配置决定是否监听)
+	lp, _ := llmproxy.New()
 	return &App{
 		forensic:  fns,
 		appsearch: apsearch,
@@ -102,6 +106,7 @@ func NewApp() *App {
 		api:       api,
 		outlook:   outlk,
 		filehash:  filehash.New(),
+		llmproxy:  lp,
 	}
 }
 
@@ -138,6 +143,12 @@ func (a *App) startup(ctx context.Context) {
 	if a.filehash != nil {
 		a.filehash.SetContext(ctx)
 	}
+	// LLM 代理:按持久化配置决定是否启动监听
+	if a.llmproxy != nil {
+		if err := a.llmproxy.ApplyConfig(a.llmproxy.Config()); err != nil {
+			wailsruntime.LogWarningf(ctx, "llmproxy 启动失败: %v", err)
+		}
+	}
 }
 
 // shutdown 在 Wails 关闭前调用,释放剪贴板监听等
@@ -153,6 +164,9 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	if a.outlook != nil {
 		a.outlook.Stop()
+	}
+	if a.llmproxy != nil {
+		_ = a.llmproxy.Shutdown()
 	}
 }
 
@@ -434,6 +448,75 @@ func (a *App) ExportNetEnvReport(report netenvcheck.Report, format string) (stri
 		DisplayName:     strings.ToUpper(ext) + " 文件",
 	}
 	return system.SaveBytesToFile(a.ctx, opts, base64.StdEncoding.EncodeToString([]byte(content)))
+}
+
+// ================ LLM 透明代理 ================
+
+// GetLLMProxyConfig 当前代理配置。
+func (a *App) GetLLMProxyConfig() llmproxy.Config {
+	if a.llmproxy == nil {
+		return llmproxy.DefaultConfig()
+	}
+	return a.llmproxy.Config()
+}
+
+// UpdateLLMProxyConfig 保存并应用新配置(可能启停/重启监听)。
+func (a *App) UpdateLLMProxyConfig(cfg llmproxy.Config) error {
+	if a.llmproxy == nil {
+		return nil
+	}
+	if err := llmproxy.SaveConfig(cfg); err != nil {
+		return err
+	}
+	return a.llmproxy.ApplyConfig(cfg)
+}
+
+// GetLLMProxyStatus 代理实时状态(是否监听/地址/错误)。
+func (a *App) GetLLMProxyStatus() llmproxy.Status {
+	if a.llmproxy == nil {
+		return llmproxy.Status{}
+	}
+	return a.llmproxy.Status()
+}
+
+// ListLLMProxyLogs 查询请求日志(过滤 + 分页)。
+func (a *App) ListLLMProxyLogs(query llmproxy.LogQuery) (*llmproxy.LogPage, error) {
+	if a.llmproxy == nil {
+		return &llmproxy.LogPage{}, nil
+	}
+	return a.llmproxy.ListLogs(query)
+}
+
+// GetLLMProxyLog 单条日志详情(含头与体)。
+func (a *App) GetLLMProxyLog(id int64) (*llmproxy.LogDetail, error) {
+	if a.llmproxy == nil {
+		return nil, nil
+	}
+	return a.llmproxy.LogDetail(id)
+}
+
+// DeleteLLMProxyLog 删除单条日志。
+func (a *App) DeleteLLMProxyLog(id int64) error {
+	if a.llmproxy == nil {
+		return nil
+	}
+	return a.llmproxy.DeleteLog(id)
+}
+
+// ClearLLMProxyLogs 清空全部日志。
+func (a *App) ClearLLMProxyLogs() error {
+	if a.llmproxy == nil {
+		return nil
+	}
+	return a.llmproxy.ClearLogs()
+}
+
+// ReplayLLMProxyRequest 重放一条请求(密钥未落盘,需在 headers 里自带 Authorization),返回新日志详情。
+func (a *App) ReplayLLMProxyRequest(input llmproxy.ReplayInput) (*llmproxy.LogDetail, error) {
+	if a.llmproxy == nil {
+		return nil, nil
+	}
+	return a.llmproxy.Replay(input)
 }
 
 // ResetAllData 清空整个 ~/.toolforge 目录,前端在调用前应清自家 localStorage,
