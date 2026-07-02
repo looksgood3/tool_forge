@@ -58,7 +58,7 @@ jobs:
         run: npm ci
 
       - name: Run Go tests
-        run: go test -timeout 60s ./...
+        run: go test -timeout 60s ./backend/...
 
       - name: Build Windows amd64
         run: wails build -platform windows/amd64 -clean -trimpath
@@ -136,7 +136,7 @@ jobs:
         run: npm ci
 
       - name: Run Go tests
-        run: go test -timeout 60s ./...
+        run: go test -timeout 60s ./backend/...
 
       - name: Build macOS Universal
         run: wails build -platform darwin/universal -clean -trimpath

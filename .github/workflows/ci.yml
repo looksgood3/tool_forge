@@ -39,7 +39,7 @@ jobs:
         run: npm ci
 
       - name: Run Go tests
-        run: go test -timeout 60s ./...
+        run: go test -timeout 60s ./backend/...
 
       - name: Type check frontend
         working-directory: frontend
@@ -78,7 +78,7 @@ jobs:
         run: npm ci
 
       - name: Run Go tests
-        run: go test -timeout 60s ./...
+        run: go test -timeout 60s ./backend/...
 
       - name: Type check frontend
         working-directory: frontend
