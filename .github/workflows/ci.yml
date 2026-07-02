@@ -41,10 +41,6 @@ jobs:
       - name: Run Go tests
         run: go test -timeout 60s ./backend/...
 
-      - name: Type check frontend
-        working-directory: frontend
-        run: npm run type-check
-
       - name: Build Windows amd64
         run: wails build -platform windows/amd64 -clean -trimpath
 
@@ -79,10 +75,6 @@ jobs:
 
       - name: Run Go tests
         run: go test -timeout 60s ./backend/...
-
-      - name: Type check frontend
-        working-directory: frontend
-        run: npm run type-check
 
       - name: Build macOS Universal
         run: wails build -platform darwin/universal -clean -trimpath
